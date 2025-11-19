@@ -15,10 +15,10 @@
 import React, { useState } from "react";
 import axios from "@/utils/axiosInstance";
 import { Button } from "@/components/ui/Button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
+import { Input } from "@/components/ui/Input";
 import { Loader2, FileText, CheckCircle, XCircle } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 export default function AwardIssueForm({ arbitrationId, arbitratorId }) {

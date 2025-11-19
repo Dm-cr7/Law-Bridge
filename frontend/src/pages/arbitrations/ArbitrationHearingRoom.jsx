@@ -26,9 +26,9 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
+} from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/input";
+import { Input } from "@/components/ui/Input";
 import { Badge } from "@/components/ui/badge";
 import ScrollArea from "@/components/ui/ScrollArea";
 import { toast } from "react-hot-toast";

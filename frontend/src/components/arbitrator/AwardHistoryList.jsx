@@ -15,8 +15,8 @@
 
 import React, { useEffect, useState, useMemo } from "react";
 import axios from "@/utils/axiosInstance";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
+import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Download, Search, FileText } from "lucide-react";

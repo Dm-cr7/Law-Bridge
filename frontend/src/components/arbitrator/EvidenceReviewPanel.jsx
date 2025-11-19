@@ -15,7 +15,7 @@
 
 import React, { useEffect, useState } from "react";
 import axios from "@/utils/axiosInstance";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";

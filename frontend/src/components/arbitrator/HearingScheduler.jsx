@@ -14,9 +14,9 @@
 
 import React, { useState, useEffect } from "react";
 import axios from "@/utils/axiosInstance";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/input";
+import { Input } from "@/components/ui/Input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Loader2, CalendarDays, Bell, XCircle } from "lucide-react";
