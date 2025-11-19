@@ -15,7 +15,7 @@ import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "@/utils/axiosInstance";
 import ArbitrationListItem from "@/pages/arbitrations/ArbitrationListItem";import { Input } from "@/components/ui/Input";
-import { Select, SelectTrigger, SelectContent, SelectItem } from "@/components/ui/select";
+import { Select, SelectTrigger, SelectContent, SelectItem } from "@/components/ui/Select";
 import { Button } from "@/components/ui/Button";
 import { Loader2, RefreshCcw, Filter } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
