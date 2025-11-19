@@ -19,7 +19,8 @@ const Login = lazy(() => import("./pages/public/Login.jsx"));
 const Register = lazy(() => import("./pages/public/Register.jsx"));
 const ForgotPassword = lazy(() => import("./pages/public/ForgotPassword.jsx"));
 const ResetPassword = lazy(() => import("./pages/public/ResetPassword.jsx"));
-const VerifyEmail = lazy(() => import("./pages/public/VerifyEmail.jsx"));
+const VerifyEmail = lazy(() => import("./pages/public/verifyEmail.jsx"));
+
 
 // ⚖️ Role Dashboards
 const AdvocateDashboard = lazy(() => import("./pages/AdvocateDashboard.jsx"));
