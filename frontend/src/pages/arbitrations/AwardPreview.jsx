@@ -14,7 +14,7 @@
 import React, { useEffect, useState } from "react";
 import axios from "@/utils/axiosInstance";
 import { Button } from "@/components/ui/Button";
-import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/Card";
 import { Loader2, FileText, Download } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 export default function AwardPreview({ arbitrationId }) {
