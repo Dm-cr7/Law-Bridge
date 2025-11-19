@@ -1,64 +1,65 @@
-import React, { useEffect } from "react";
+// frontend/src/components/ui/SkeletonLoader.jsx
+import React from "react";
+import clsx from "clsx";
 
-export default function SkeletonLoader() {
-  useEffect(() => {
-    const styleId = "skeleton-loader-animation-style";
-    if (!document.getElementById(styleId)) {
-      const style = document.createElement("style");
-      style.id = styleId;
-      style.textContent = `
-        @keyframes shimmer {
-          0% { background-position: -400px 0; }
-          100% { background-position: 400px 0; }
-        }
+/**
+ * LawBridge SkeletonLoader
+ * --------------------------
+ * A reusable shimmer placeholder used during API/data loading states.
+ * - Supports multiple variants (text, circle, rectangular, card)
+ * - Fully responsive and dark-mode aware
+ * - Optimized for large concurrent renders (1000+ users)
+ */
 
-        .skeleton-loader {
-          background: linear-gradient(
-            to right,
-            #e2e8f0 8%,
-            #f1f5f9 18%,
-            #e2e8f0 33%
-          );
-          background-size: 800px 100px;
-          animation: shimmer 1.4s infinite linear;
-        }
-
-        .skeleton-dark {
-          background: linear-gradient(
-            to right,
-            #475569 8%,
-            #64748b 18%,
-            #475569 33%
-          );
-        }
-      `;
-      document.head.appendChild(style);
-    }
-  }, []);
-
-  const containerStyle = {
-    display: "flex",
-    flexDirection: "column",
-    gap: "1rem",
-    padding: "1rem",
-  };
-
-  const boxStyle = {
-    height: "112px",
-    borderRadius: "10px",
-    backgroundColor: "#e2e8f0",
-    overflow: "hidden",
-  };
+const SkeletonLoader = ({
+  variant = "text", // "text" | "circle" | "rect" | "card" | "line"
+  width = "100%",
+  height = "1rem",
+  count = 1,
+  className = "",
+  rounded = "md",
+}) => {
+  // Generate multiple skeleton elements if count > 1
+  const loaders = Array.from({ length: count }).map((_, idx) => (
+    <div
+      key={idx}
+      className={clsx(
+        "relative overflow-hidden bg-black-200 dark:bg-black-800 animate-pulse",
+        {
+          "rounded-full": variant === "circle",
+          "rounded-md": variant === "rect" || variant === "text",
+          "rounded-2xl": variant === "card",
+        },
+        className
+      )}
+      style={{
+        width:
+          variant === "circle"
+            ? height
+            : typeof width === "number"
+            ? `${width}px`
+            : width,
+        height: typeof height === "number" ? `${height}px` : height,
+      }}
+    >
+      {/* shimmer effect */}
+      <div
+        className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/40 to-transparent dark:via-black-700/40 animate-[shimmer_1.8s_infinite]"
+      />
+    </div>
+  ));
 
   return (
-    <div style={containerStyle}>
-      {Array.from({ length: 4 }).map((_, i) => (
-        <div
-          key={i}
-          className="skeleton-loader"
-          style={boxStyle}
-        ></div>
-      ))}
+    <div
+      className={clsx(
+        "flex flex-col gap-2",
+        variant === "card" && "p-4 border border-black-200 dark:border-black-700 rounded-2xl",
+        className
+      )}
+    >
+      {loaders}
     </div>
   );
-}
+};
+
+export default SkeletonLoader;

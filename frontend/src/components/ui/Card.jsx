@@ -1,64 +1,80 @@
+// frontend/src/components/ui/Card.jsx
 import React from "react";
+import clsx from "clsx";
 
 /**
- * A flexible, modern Card component with optional variants and internal styles.
- * Supports: base, outlined, flat variants. Fully theme-aware.
+ * LawBridge Card Component
+ * -------------------------------------
+ * Reusable card component with a clean, legal-grade UI aesthetic.
+ * Supports header, title, content, and footer regions.
  */
-export default function Card({
-  children,
-  style = {},
-  className = "",
-  variant = "base", // "base", "outlined", "flat"
-  hoverable = false,
-}) {
-  const baseStyle = {
-    backgroundColor: "var(--card-bg, #ffffff)",
-    color: "var(--card-text, #1e293b)",
-    border: "1px solid var(--card-border, #e2e8f0)",
-    borderRadius: "12px",
-    padding: "1.5rem",
-    boxShadow: "0 2px 8px rgba(0, 0, 0, 0.05)",
-    transition: "all 0.3s ease",
-  };
 
-  const variants = {
-    base: {},
-    outlined: {
-      backgroundColor: "transparent",
-      border: "1px solid var(--card-border, #cbd5e1)",
-      boxShadow: "none",
-    },
-    flat: {
-      border: "none",
-      boxShadow: "none",
-    },
-  };
+const baseStyles =
+  "rounded-2xl bg-white dark:bg-black-900 shadow-sm border border-black-200 dark:border-black-800 transition-all duration-300";
 
-  const hoverEffect = hoverable
-    ? {
-        boxShadow: "0 4px 12px rgba(0, 0, 0, 0.08)",
-        cursor: "pointer",
-      }
-    : {};
+const hoverableStyles =
+  "hover:shadow-md hover:-translate-y-0.5 cursor-pointer";
 
-  return (
-    <div
-      className={className}
-      style={{
-        ...baseStyle,
-        ...(variants[variant] || {}),
-        ...(hoverable ? { transition: "box-shadow 0.2s" } : {}),
-        ...style,
-      }}
-      onMouseEnter={(e) => {
-        if (hoverable) Object.assign(e.currentTarget.style, hoverEffect);
-      }}
-      onMouseLeave={(e) => {
-        if (hoverable)
-          Object.assign(e.currentTarget.style, variants[variant] || {});
-      }}
-    >
-      {children}
-    </div>
-  );
-}
+export const Card = React.forwardRef(
+  ({ children, className = "", hoverable = false, bordered = true, ...props }, ref) => {
+    return (
+      <div
+        ref={ref}
+        className={clsx(
+          baseStyles,
+          hoverable && hoverableStyles,
+          !bordered && "border-transparent",
+          className
+        )}
+        {...props}
+      >
+        {children}
+      </div>
+    );
+  }
+);
+Card.displayName = "Card";
+
+/* =======================================================
+   SUBCOMPONENTS
+   ======================================================= */
+
+export const CardHeader = ({ title, subtitle, className = "", children }) => (
+  <div className={clsx("px-5 py-4 border-b border-black-100 dark:border-black-800", className)}>
+    {title && (
+      <h3 className="text-lg font-semibold text-black-900 dark:text-black-100">{title}</h3>
+    )}
+    {subtitle && (
+      <p className="text-sm text-black-500 dark:text-black-400">{subtitle}</p>
+    )}
+    {children}
+  </div>
+);
+
+export const CardTitle = ({ children, className = "" }) => (
+  <h3 className={clsx("text-lg font-semibold text-black-900 dark:text-black-100", className)}>
+    {children}
+  </h3>
+);
+
+export const CardContent = ({ className = "", children }) => (
+  <div className={clsx("px-5 py-4 text-black-800 dark:text-black-200", className)}>
+    {children}
+  </div>
+);
+
+export const CardFooter = ({ className = "", children }) => (
+  <div className={clsx("px-5 py-3 border-t border-black-100 dark:border-black-800", className)}>
+    {children}
+  </div>
+);
+
+/* =======================================================
+   DEFAULT EXPORT (subcomponent style)
+   ======================================================= */
+export default Object.assign(Card, {
+  Header: CardHeader,
+  Title: CardTitle,
+  Content: CardContent,
+  Footer: CardFooter,
+});

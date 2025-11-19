@@ -1,304 +1,133 @@
-import React, { useEffect, useState } from "react";
-import API from "../api/axios"; // <-- Custom instance that injects token
-import {
-  Briefcase,
-  ClipboardCheck,
-  CheckCircle2,
-  Plus,
-  ListTodo,
-} from "lucide-react";
-import { motion as Motion } from "framer-motion";
+/**
+ * AdvocateDashboard.jsx — Advocate Command Center
+ * ------------------------------------------------------------
+ * 🎯 Minimal, fast, static + interactive dashboard for advocates
+ * ✅ Clean action hub (no charts / no syncing banners)
+ * ✅ Responsive and animated
+ * ✅ Links to all key advocate actions
+ */
 
-import NewCaseModal from "../components/NewCaseModal.jsx";
-import TaskFormModal from "../components/TaskFormModal.jsx";
-import CaseCard from "../components/CaseCard.jsx";
-import SkeletonLoader from "../components/ui/SkeletonLoader.jsx";
+import React from "react";
+import { motion } from "framer-motion";
+import {
+  PlusCircle,
+  FileText,
+  Users,
+  Briefcase,
+  CheckCircle,
+  CalendarDays,
+  ArrowRightCircle,
+} from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "@/context/AuthContext";
+import NewCaseModal from "@/components/NewCaseModal";
+import TaskFormModal from "@/components/TaskFormModal";
+
+const ACTIONS = [
+  {
+    label: "Register Client",
+    icon: <Users size={28} />,
+    color: "bg-amber-500 hover:bg-amber-600",
+    path: "/dashboard/clients",
+  },
+  {
+    label: "Draft Document",
+    icon: <FileText size={28} />,
+    color: "bg-purple-500 hover:bg-purple-600",
+    path: "/dashboard/documents/new",
+  },
+  {
+    label: "New Case",
+    icon: <Briefcase size={28} />,
+    color: "bg-blue-500 hover:bg-blue-600",
+    modal: "case",
+  },
+  {
+    label: "New Task",
+    icon: <CheckCircle size={28} />,
+    color: "bg-emerald-500 hover:bg-emerald-600",
+    modal: "task",
+  },
+  {
+    label: "View Calendar",
+    icon: <CalendarDays size={28} />,
+    color: "bg-indigo-500 hover:bg-indigo-600",
+    path: "/dashboard/hearings",
+  },
+  {
+    label: "Generate Report",
+    icon: <ArrowRightCircle size={28} />,
+    color: "bg-gray-700 hover:bg-gray-800",
+    path: "/dashboard/reports",
+  },
+];
 
 export default function AdvocateDashboard() {
-  const [cases, setCases] = useState([]);
-  const [tasks, setTasks] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [showNewCaseModal, setShowNewCaseModal] = useState(false);
-  const [showNewTaskModal, setShowNewTaskModal] = useState(false);
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const [isCaseModalOpen, setCaseModalOpen] = React.useState(false);
+  const [isTaskModalOpen, setTaskModalOpen] = React.useState(false);
 
-  useEffect(() => {
-    (async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const [casesRes, tasksRes] = await Promise.all([
-          API.get("/api/cases"),
-          API.get("/api/tasks?createdBy=me"),
-        ]);
-        setCases(casesRes.data);
-        setTasks(tasksRes.data);
-      } catch (err) {
-        console.error("Failed to load data:", err);
-        setError("Failed to load dashboard data.");
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
-
-  const handleCaseCreated = (nc) => setCases((prev) => [nc, ...prev]);
-  const handleCaseUpdated = (uc) =>
-    setCases((prev) => prev.map((c) => (c._id === uc._id ? uc : c)));
-  const handleCaseDeleted = (id) =>
-    setCases((prev) => prev.filter((c) => c._id !== id));
-  const handleTaskCreated = (nt) => setTasks((prev) => [nt, ...prev]);
-
-  const pending = cases.filter((c) => c.status === "Pending").length;
-  const inProgress = cases.filter((c) => c.status === "In Progress").length;
-  const done = cases.filter((c) => c.status === "Done").length;
+  const handleAction = (action) => {
+    if (action.path) navigate(action.path);
+    else if (action.modal === "case") setCaseModalOpen(true);
+    else if (action.modal === "task") setTaskModalOpen(true);
+  };
 
   return (
-    <div className="dashboard-container">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50 to-white px-6 py-12 text-gray-800">
+      <motion.div
+        initial={{ opacity: 0, y: 25 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.6 }}
+        className="max-w-6xl mx-auto text-center"
+      >
+        {/* Header */}
+        <h1 className="text-3xl sm:text-4xl font-semibold mb-2 text-gray-800">
+          Welcome, {user?.name || "Advocate"}
+        </h1>
+        <p className="text-gray-500 mb-12">
+          Manage your practice efficiently — all your key tools, one place.
+        </p>
+
+        {/* Action Grid */}
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          {ACTIONS.map((action, i) => (
+            <motion.button
+              key={i}
+              onClick={() => handleAction(action)}
+              whileHover={{ scale: 1.05, y: -3 }}
+              whileTap={{ scale: 0.97 }}
+              className={`${action.color} text-white flex flex-col items-center justify-center py-10 rounded-2xl shadow-md transition transform focus:outline-none`}
+            >
+              <div className="mb-3">{action.icon}</div>
+              <span className="text-lg font-medium">{action.label}</span>
+            </motion.button>
+          ))}
+        </div>
+
+        {/* Quote / Footer Message */}
+        <motion.div
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.5 }}
+          className="mt-16 text-center"
+        >
+          <p className="text-gray-600 italic">
+            “Justice delayed is justice denied — manage smarter, act faster.”
+          </p>
+        </motion.div>
+      </motion.div>
+
       {/* Modals */}
       <NewCaseModal
-        isOpen={showNewCaseModal}
-        onClose={() => setShowNewCaseModal(false)}
-        onCreated={handleCaseCreated}
+        isOpen={isCaseModalOpen}
+        onClose={() => setCaseModalOpen(false)}
       />
       <TaskFormModal
-        isOpen={showNewTaskModal}
-        onClose={() => setShowNewTaskModal(false)}
-        onCreated={handleTaskCreated}
+        isOpen={isTaskModalOpen}
+        onClose={() => setTaskModalOpen(false)}
       />
-
-      {/* Header */}
-      <div className="dashboard-header">
-        <div>
-          <h1 className="title">Advocate Dashboard</h1>
-          <p className="subtitle">Your current workload and assigned tasks</p>
-        </div>
-        <div className="button-group">
-          <button className="button secondary" onClick={() => setShowNewTaskModal(true)}>
-            <Plus size={16} /> New Task
-          </button>
-          <button className="button primary" onClick={() => setShowNewCaseModal(true)}>
-            <Plus size={16} /> New Case
-          </button>
-        </div>
-      </div>
-
-      {/* Stat Cards */}
-      <Motion.div
-        className="stat-grid"
-        initial="hidden"
-        animate="visible"
-        variants={{
-          hidden: {},
-          visible: { transition: { staggerChildren: 0.1 } },
-        }}
-      >
-        {[
-          { title: "Pending Cases", value: pending, icon: <Briefcase /> },
-          { title: "In Progress", value: inProgress, icon: <ClipboardCheck /> },
-          { title: "Completed", value: done, icon: <CheckCircle2 /> },
-        ].map((stat) => (
-          <Motion.div
-            key={stat.title}
-            variants={{ hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0 } }}
-            className="stat-card"
-          >
-            <div className="stat-icon">{stat.icon}</div>
-            <div>
-              <h3>{stat.title}</h3>
-              <p>{loading ? "..." : stat.value}</p>
-            </div>
-          </Motion.div>
-        ))}
-      </Motion.div>
-
-      {/* Content Grid */}
-      <div className="content-grid">
-        {/* Cases */}
-        <div>
-          <h2 className="section-title">Recent Cases</h2>
-          {loading ? (
-            <SkeletonLoader />
-          ) : error ? (
-            <div className="error-card">{error}</div>
-          ) : cases.length === 0 ? (
-            <div className="empty-card">No cases found.</div>
-          ) : (
-            <div className="case-grid">
-              {cases.map((c) => (
-                <div key={c._id} className="case-card">
-                  <CaseCard
-                    c={c}
-                    onUpdated={handleCaseUpdated}
-                    onDeleted={handleCaseDeleted}
-                  />
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Tasks */}
-        <div>
-          <h2 className="section-title">My Tasks</h2>
-          <div className="task-card">
-            {loading ? (
-              <p>Loading tasks...</p>
-            ) : tasks.length === 0 ? (
-              <p>No tasks available.</p>
-            ) : (
-              <ul className="task-list">
-                {tasks.map((t) => (
-                  <li key={t._id} className="task-item">
-                    <ListTodo size={18} className="task-icon" />
-                    <span className="task-text">{t.title}</span>
-                    <span className="task-date">
-                      {new Date(t.dueDate).toLocaleDateString()}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Scoped CSS (do not remove or move out) */}
-      <style jsx>{`
-        .dashboard-container {
-          background: #f3f7fc;
-          min-height: 100vh;
-          padding: 2rem;
-          font-family: 'Segoe UI', sans-serif;
-        }
-        .dashboard-header {
-          display: flex;
-          flex-wrap: wrap;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 2rem;
-        }
-        .title {
-          font-size: 2.25rem;
-          font-weight: 800;
-          color: #0c1a38;
-        }
-        .subtitle {
-          font-size: 1rem;
-          color: #526281;
-        }
-        .button-group {
-          display: flex;
-          gap: 1rem;
-        }
-        .button {
-          display: flex;
-          align-items: center;
-          gap: 0.5rem;
-          padding: 0.5rem 1rem;
-          border: none;
-          border-radius: 6px;
-          font-weight: 600;
-          cursor: pointer;
-        }
-        .button.primary {
-          background-color: #2563eb;
-          color: white;
-        }
-        .button.secondary {
-          background-color: #e0e7ff;
-          color: #1e3a8a;
-        }
-        .stat-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-          gap: 1.5rem;
-          margin-bottom: 2rem;
-        }
-        .stat-card {
-          background: white;
-          border-radius: 10px;
-          padding: 1rem;
-          box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
-          display: flex;
-          gap: 1rem;
-          align-items: center;
-        }
-        .stat-icon {
-          color: #2563eb;
-        }
-        .content-grid {
-          display: grid;
-          grid-template-columns: 2fr 1fr;
-          gap: 2rem;
-        }
-        .section-title {
-          font-size: 1.5rem;
-          margin-bottom: 1rem;
-          color: #0f172a;
-        }
-        .case-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-          gap: 1.5rem;
-        }
-        .case-card {
-          background: white;
-          border-radius: 8px;
-          transition: all 0.2s ease;
-          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-        }
-        .case-card:hover {
-          transform: scale(1.015);
-          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-        }
-        .task-card {
-          background: white;
-          padding: 1rem;
-          border-radius: 10px;
-          box-shadow: 0 1px 5px rgba(0, 0, 0, 0.05);
-          max-height: 400px;
-          overflow-y: auto;
-        }
-        .task-list {
-          list-style: none;
-          padding: 0;
-          margin: 0;
-        }
-        .task-item {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          padding: 0.75rem;
-          border-radius: 8px;
-          background-color: #eff6ff;
-          margin-bottom: 0.5rem;
-          transition: background 0.2s ease;
-        }
-        .task-item:hover {
-          background-color: #dbeafe;
-        }
-        .task-icon {
-          color: #2563eb;
-        }
-        .task-text {
-          flex: 1;
-          margin-left: 0.5rem;
-          color: #1e293b;
-        }
-        .task-date {
-          font-size: 0.875rem;
-          color: #64748b;
-        }
-        .error-card,
-        .empty-card {
-          background: #fef2f2;
-          color: #b91c1c;
-          padding: 1.5rem;
-          border-radius: 10px;
-          text-align: center;
-        }
-      `}</style>
     </div>
   );
 }

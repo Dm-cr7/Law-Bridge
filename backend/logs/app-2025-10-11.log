@@ -1,0 +1,5 @@
+{"level":"warn","message":"⚠️ Received SIGINT. Shutting down gracefully...","timestamp":"2025-10-11 08:30:30"}
+{"level":"info","message":"HTTP server closed.","timestamp":"2025-10-11 08:30:30"}
+{"level":"info","message":"MongoDB connection closed.","timestamp":"2025-10-11 08:30:30"}
+{"level":"info","message":"✅ MongoDB connected","timestamp":"2025-10-11 08:30:38"}
+{"level":"info","message":"🚀 Server running on port 5000 [development]","timestamp":"2025-10-11 08:30:38"}

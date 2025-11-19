@@ -1,75 +1,99 @@
-import plugin from 'tailwindcss/plugin';
-
+/** @type {import('tailwindcss').Config} */
 export default {
-  darkMode: "class",
+  darkMode: "class", // Enables .dark class toggle
   content: [
     "./index.html",
-    "./src/**/*.{js,ts,jsx,tsx}",
+    "./src/**/*.{js,jsx,ts,tsx}", // ✅ Scan all React files
   ],
   theme: {
     extend: {
-      colors: {
-        background: "#f0f9ff", // lightest blue
-        foreground: "#0f172a", // dark text
-        border:     "#cbd5e1",
-        input:      "#e2e8f0",
-        ring:       "#3b82f6",
+      fontFamily: {
+        sans: ["Inter", "system-ui", "sans-serif"],
+        serif: ["Roboto Serif", "serif"],
+      },
 
+      colors: {
         primary: {
-          DEFAULT:    "#3b82f6",   // blue-500
-          foreground: "#ffffff",
-        },
-        secondary: {
-          DEFAULT:    "#1e40af",   // blue-800
-          foreground: "#ffffff",
+          DEFAULT: "#0a66c2",
+          dark: "#084b8a",
+          light: "#60a5fa",
         },
         accent: {
-          DEFAULT:    "#dbeafe",   // blue-100
-          foreground: "#1e3a8a",
+          DEFAULT: "#22c55e",
+          dark: "#16a34a",
+        },
+        danger: {
+          DEFAULT: "#ef4444",
+          dark: "#dc2626",
+        },
+        warning: {
+          DEFAULT: "#f59e0b",
+          dark: "#d97706",
+        },
+        background: {
+          light: "#f9fafb",
+          dark: "#111827",
+        },
+        surface: {
+          light: "#ffffff",
+          dark: "#1f2937",
         },
         muted: {
-          DEFAULT:    "#e0f2fe",   // blue-200
-          foreground: "#475569",
-        },
-        card: {
-          DEFAULT:    "#f0f9ff",   // light card
-          foreground: "#0f172a",
-        },
-        destructive: {
-          DEFAULT:    "#ef4444",
-          foreground: "#ffffff",
-        },
-        popover: {
-          DEFAULT:    "#ffffff",
-          foreground: "#1e293b",
+          light: "#6b7280",
+          dark: "#9ca3af",
         },
       },
-      fontFamily: {
-        sans:    ["Inter", "sans-serif"],
-        heading: ["Poppins", "sans-serif"],
-      },
+
       borderRadius: {
-        lg: "1rem",
-        md: "0.75rem",
-        sm: "0.5rem",
+        xl: "1rem",
+        "2xl": "1.5rem",
+      },
+
+      boxShadow: {
+        soft: "0 4px 10px rgba(0,0,0,0.08)",
+        card: "0 8px 20px rgba(0,0,0,0.05)",
+        glow: "0 0 12px rgba(10,102,194,0.3)",
+      },
+
+      transitionTimingFunction: {
+        smooth: "cubic-bezier(0.4, 0, 0.2, 1)",
+      },
+
+      keyframes: {
+        fadeIn: {
+          "0%": { opacity: 0, transform: "translateY(6px)" },
+          "100%": { opacity: 1, transform: "translateY(0)" },
+        },
+        scaleIn: {
+          "0%": { opacity: 0, transform: "scale(0.95)" },
+          "100%": { opacity: 1, transform: "scale(1)" },
+        },
+        pulseGlow: {
+          "0%, 100%": { opacity: 1, boxShadow: "0 0 0 rgba(10,102,194,0)" },
+          "50%": { opacity: 0.9, boxShadow: "0 0 20px rgba(10,102,194,0.4)" },
+        },
+      },
+
+      animation: {
+        fadeIn: "fadeIn 0.4s ease-in-out both",
+        scaleIn: "scaleIn 0.35s ease-in-out both",
+        pulseGlow: "pulseGlow 2s ease-in-out infinite",
+      },
+
+      container: {
+        center: true,
+        padding: {
+          DEFAULT: "1rem",
+          sm: "1.5rem",
+          lg: "2rem",
+          xl: "2.5rem",
+        },
       },
     },
   },
   plugins: [
-    plugin(({ addUtilities }) => {
-      addUtilities({
-        ".bg-background":         { backgroundColor: "#f0f9ff" },
-        ".text-foreground":       { color: "#0f172a" },
-        ".border-border":         { borderColor: "#cbd5e1" },
-        ".bg-input":              { backgroundColor: "#e2e8f0" },
-        ".ring-ring":             { "--tw-ring-color": "#3b82f6" },
-
-        ".bg-card":               { backgroundColor: "#f0f9ff" },
-        ".text-card-foreground":  { color: "#0f172a" },
-
-        ".bg-muted":              { backgroundColor: "#e0f2fe" },
-        ".text-muted-foreground": { color: "#475569" },
-      });
-    }),
+    require("@tailwindcss/forms"), // ✅ Modern form inputs
+    require("@tailwindcss/typography"), // ✅ For legal documents
+    require("@tailwindcss/aspect-ratio"), // ✅ For media evidence previews
   ],
 };

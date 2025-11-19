@@ -1,0 +1,270 @@
+/* ==========================================================
+   Intake Module Global Styles
+   Applies to:
+   - IntakePage.jsx
+   - IntakeForm.jsx
+   - Attachments.jsx
+   - DuplicateCheck.jsx
+   - IntakeSuccess.jsx
+   ----------------------------------------------------------
+   Design System:
+   - Soft whites and grays
+   - Blue primary accents (#2563eb)
+   - Rounded corners (0.75rem – 1rem)
+   - Subtle shadows
+   - Inter font throughout
+   ========================================================== */
+
+:root {
+  --primary: #2563eb;
+  --primary-light: #3b82f6;
+  --primary-bg: #eef5ff;
+  --danger: #dc2626;
+  --success: #16a34a;
+  --gray-100: #f3f4f6;
+  --gray-200: #e5e7eb;
+  --gray-300: #d1d5db;
+  --gray-500: #6b7280;
+  --gray-700: #374151;
+  --gray-900: #111827;
+  --radius: 0.75rem;
+  --shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.intake-page-container {
+  font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial;
+  width: 100%;
+  padding: 2rem;
+  background: #f8fafc;
+  min-height: 100vh;
+}
+
+/* ----------------------------------------------------------
+   Header
+-----------------------------------------------------------*/
+.intake-header {
+  margin-bottom: 2rem;
+}
+
+.intake-header h1 {
+  font-size: 2rem;
+  font-weight: 800;
+  color: var(--gray-900);
+}
+
+.intake-header p {
+  color: var(--gray-500);
+  margin-top: 0.25rem;
+}
+
+/* ----------------------------------------------------------
+   Form Card
+----------------------------------------------------------- */
+.intake-card {
+  background: #fff;
+  border-radius: var(--radius);
+  padding: 2rem;
+  box-shadow: var(--shadow-lg);
+  border: 1px solid var(--gray-200);
+}
+
+.intake-section-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--gray-900);
+  margin-bottom: 1rem;
+}
+
+/* ----------------------------------------------------------
+   Form Inputs
+----------------------------------------------------------- */
+.intake-form-group {
+  margin-bottom: 1rem;
+}
+
+.intake-label {
+  display: block;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--gray-700);
+  margin-bottom: 0.25rem;
+}
+
+.intake-input,
+.intake-select,
+.intake-textarea {
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--gray-300);
+  background: #fff;
+  font-size: 0.95rem;
+  transition: 0.2s border, 0.2s box-shadow;
+}
+
+.intake-input:focus,
+.intake-select:focus,
+.intake-textarea:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+}
+
+.intake-textarea {
+  resize: vertical;
+}
+
+/* ----------------------------------------------------------
+   Error Text
+----------------------------------------------------------- */
+.intake-error {
+  font-size: 0.8rem;
+  color: var(--danger);
+  margin-top: 0.25rem;
+}
+
+/* ----------------------------------------------------------
+   Buttons
+----------------------------------------------------------- */
+.intake-btn {
+  padding: 0.65rem 1.2rem;
+  border-radius: var(--radius);
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: 0.2s;
+}
+
+.intake-btn-primary {
+  background: var(--primary);
+  color: #fff;
+}
+
+.intake-btn-primary:hover {
+  background: var(--primary-light);
+}
+
+.intake-btn-secondary {
+  background: #fff;
+  color: var(--gray-700);
+  border: 1px solid var(--gray-300);
+}
+
+.intake-btn-secondary:hover {
+  background: var(--gray-100);
+}
+
+.intake-btn-danger {
+  background: var(--danger);
+  color: #fff;
+}
+
+.intake-btn-danger:hover {
+  opacity: 0.9;
+}
+
+/* ----------------------------------------------------------
+   Attachments Upload Area
+----------------------------------------------------------- */
+.intake-attachments-box {
+  border: 2px dashed var(--gray-300);
+  border-radius: var(--radius);
+  padding: 1.5rem;
+  text-align: center;
+  cursor: pointer;
+  transition: 0.2s border;
+  background: var(--gray-100);
+}
+
+.intake-attachments-box:hover {
+  border-color: var(--primary);
+}
+
+.intake-attachment-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #fff;
+  padding: 0.75rem;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  border: 1px solid var(--gray-200);
+  margin-bottom: 0.5rem;
+}
+
+.intake-attachment-remove {
+  cursor: pointer;
+  font-size: 0.8rem;
+  color: var(--danger);
+}
+
+/* ----------------------------------------------------------
+   DuplicateCheck Panel
+----------------------------------------------------------- */
+.intake-duplicate-panel {
+  background: #fff7f7;
+  padding: 1rem;
+  border: 1px solid #ffe4e4;
+  border-radius: var(--radius);
+  margin-bottom: 1rem;
+}
+
+.intake-duplicate-item {
+  padding: 0.75rem;
+  border: 1px solid var(--gray-200);
+  background: #fff;
+  border-radius: var(--radius);
+  margin-bottom: 0.5rem;
+}
+
+/* ----------------------------------------------------------
+   Success Page
+----------------------------------------------------------- */
+.intake-success {
+  font-family: Inter, system-ui;
+  display: flex;
+  justify-content: center;
+  padding: 2rem;
+}
+
+.intake-success .success-card {
+  background: #fff;
+  padding: 2rem;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  width: 100%;
+  max-width: 700px;
+  border: 1px solid var(--gray-200);
+}
+
+.success-heading {
+  font-weight: 700;
+  color: var(--gray-900);
+}
+
+.success-subtitle {
+  color: var(--gray-600);
+}
+
+.success-attachment-item {
+  padding: 0.75rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--gray-200);
+  background: #fff;
+  margin-bottom: 0.5rem;
+}
+
+/* ----------------------------------------------------------
+   Utility
+----------------------------------------------------------- */
+.mt-1 { margin-top: 0.25rem; }
+.mt-2 { margin-top: 0.5rem; }
+.mt-3 { margin-top: 0.75rem; }
+.mt-4 { margin-top: 1rem; }
+
+.mb-1 { margin-bottom: 0.25rem; }
+.mb-2 { margin-bottom: 0.5rem; }
+.mb-3 { margin-bottom: 0.75rem; }
+.mb-4 { margin-bottom: 1rem; }

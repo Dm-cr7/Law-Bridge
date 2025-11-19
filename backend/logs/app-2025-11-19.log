@@ -1,0 +1,4 @@
+{"level":"info","message":"📦 MongoDB connected","timestamp":"2025-11-19 11:47:24"}
+{"level":"info","message":"🚀 Server running at http://localhost:5000 in development","timestamp":"2025-11-19 11:47:24"}
+{"level":"warn","message":"⚠️ Received SIGINT. Shutting down...","timestamp":"2025-11-19 11:47:46"}
+{"level":"info","message":"HTTP server closed","timestamp":"2025-11-19 11:47:46"}

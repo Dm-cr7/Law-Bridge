@@ -1,16 +1,91 @@
 <!doctype html>
 <html lang="en">
   <head>
+    <!-- ============================= -->
+    <!-- 🌐 META & SEO CONFIG -->
+    <!-- ============================= -->
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Vite + React</title>
-    <script type="module" crossorigin src="/assets/index-5be38bd2.js"></script>
-    <link rel="stylesheet" href="/assets/index-4043c366.css">
+    <meta
+      name="description"
+      content="LawBridge – A modern digital justice platform for arbitration, mediation, and legal case management."
+    />
+    <meta name="author" content="LawBridge Systems" />
+    <meta name="theme-color" content="#0a66c2" />
+
+    <!-- ============================= -->
+    <!-- 🔖 TITLE & FAVICONS -->
+    <!-- ============================= -->
+    <title>LawBridge | Digital Justice & Legal Automation</title>
+    <link rel="icon" type="image/png" href="/assets/favicon.png" />
+    <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png" />
+
+    <!-- ============================= -->
+    <!-- ⚡ PERFORMANCE & PREFETCH -->
+    <!-- ============================= -->
+    <!-- Preload our self-hosted Inter fonts -->
+    <link rel="preload" href="/fonts/Inter-Regular.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/Inter-Medium.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/Inter-SemiBold.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/Inter-Bold.woff2" as="font" type="font/woff2" crossorigin />
+
+    <link rel="manifest" href="/manifest.json" />
+
+    <!-- ============================= -->
+    <!-- 🧩 SECURITY (Content-Security-Policy) -->
+    <!-- ============================= -->
+    <!-- 
+      CSP summary:
+      - 'self' covers all local static assets.
+      - connect-src allows localhost:5000 for dev API + production API endpoint.
+      - Removed external Google font sources for tighter CSP.
+      - 'unsafe-inline' can remain during development for Tailwind's inline styles.
+    -->
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="
+        default-src 'self';
+        script-src 'self' 'unsafe-inline';
+        connect-src 'self' http://localhost:5000 ws: https://api.example.com;
+        style-src 'self' 'unsafe-inline';
+        font-src 'self' data:;
+        img-src 'self' data: blob:;
+        frame-src 'self';
+        object-src 'none';
+      "
+    />
+
+    <!-- Privacy and security headers -->
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <meta http-equiv="Permissions-Policy" content="camera=(), microphone=(), geolocation=()" />
+
+    <!-- ============================= -->
+    <!-- 🧠 STRUCTURED DATA (JSON-LD) -->
+    <!-- ============================= -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "Organization",
+        "name": "LawBridge",
+        "url": "https://lawbridge.app",
+        "logo": "https://lawbridge.app/assets/logo.png",
+        "sameAs": [
+          "https://twitter.com/lawbridge",
+          "https://linkedin.com/company/lawbridge"
+        ]
+      }
+    </script>
+
+    <!-- ============================= -->
+    <!-- 💅 GLOBAL STYLES -->
+    <!-- ============================= -->
+    <script type="module" crossorigin src="/assets/index-f8gYbhCl.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-DGYEaPq3.css">
   </head>
-  <body>
+
+  <body class="bg-black-50 text-black-900 dark:bg-black-950 dark:text-black-100 font-inter">
     <div id="root"></div>
-    <div id="modal-root"></div> <!-- ✅ Added for React portals -->
-    
+    <div id="modal-root"></div>
   </body>
 </html>

@@ -1,91 +1,86 @@
-import React, { useState } from "react";
+import React from "react";
+import { Loader2 } from "lucide-react";
+import clsx from "clsx";
 
 /**
- * A theme-aware, flexible, accessible button component.
- * Variants: primary, secondary, accent, outline, destructive.
- * Styles are scoped inline and dynamic for hover/focus feedback.
+ * LawBridge Button Component
+ * -------------------------------------
+ * Accessible, theme-aware, and React 19-safe button
+ * with loading state and variant/size support.
  */
-export default function Button({
-  children,
-  variant = "primary",
-  type = "button",
-  disabled = false,
-  style = {},
-  ...props
-}) {
-  const [hover, setHover] = useState(false);
-  const [focus, setFocus] = useState(false);
 
-  const base = {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: "0.5rem 1.25rem",
-    fontSize: "0.875rem",
-    fontWeight: 500,
-    borderRadius: "6px",
-    cursor: disabled ? "not-allowed" : "pointer",
-    transition: "all 0.2s ease",
-    outline: "none",
-    border: "none",
-    opacity: disabled ? 0.5 : 1,
-    pointerEvents: disabled ? "none" : "auto",
-    userSelect: "none",
-  };
+const baseStyles =
+  "inline-flex items-center justify-center rounded-2xl font-medium transition-all " +
+  "focus:outline-none focus:ring-2 focus:ring-offset-2 " +
+  "disabled:opacity-50 disabled:cursor-not-allowed shadow-sm";
 
-  const variants = {
-    primary: {
-      backgroundColor: "#2563eb",
-      color: "#ffffff",
-      hover: "#1d4ed8",
-    },
-    secondary: {
-      backgroundColor: "#e2e8f0",
-      color: "#1e293b",
-      hover: "#cbd5e1",
-    },
-    accent: {
-      backgroundColor: "#10b981",
-      color: "#ffffff",
-      hover: "#059669",
-    },
-    outline: {
-      backgroundColor: "transparent",
-      color: "#2563eb",
-      border: "1px solid #2563eb",
-      hover: "#eff6ff",
-    },
-    destructive: {
-      backgroundColor: "#ef4444",
-      color: "#ffffff",
-      hover: "#dc2626",
-    },
-  };
+const variants = {
+  primary:
+    "bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500 " +
+    "dark:bg-blue-500 dark:hover:bg-blue-600",
+  secondary:
+    "bg-black-100 text-black-900 hover:bg-black-200 focus:ring-black-400 " +
+    "dark:bg-black-800 dark:text-black-100 dark:hover:bg-black-700",
+  outline:
+    "border border-black-300 text-black-800 hover:bg-black-100 focus:ring-black-400 " +
+    "dark:border-black-700 dark:text-black-100 dark:hover:bg-black-800",
+  danger:
+    "bg-red-600 text-white hover:bg-red-700 focus:ring-red-500 " +
+    "dark:bg-red-500 dark:hover:bg-red-600",
+  ghost:
+    "bg-transparent text-black-700 hover:bg-black-100 " +
+    "dark:text-black-300 dark:hover:bg-black-800",
+  link: "bg-transparent text-blue-600 hover:underline dark:text-blue-400",
+};
 
-  const current = variants[variant] || variants.primary;
+const sizes = {
+  sm: "text-sm px-3 py-1.5",
+  md: "text-base px-4 py-2",
+  lg: "text-lg px-5 py-2.5",
+};
 
-  const combinedStyle = {
-    ...base,
-    backgroundColor: hover ? current.hover : current.backgroundColor,
-    color: current.color,
-    border: current.border || base.border,
-    boxShadow: focus ? "0 0 0 2px rgba(37, 99, 235, 0.4)" : "none",
-    ...style, // user-supplied overrides last
-  };
+/**
+ * @param {Object} props
+ * @param {'primary'|'secondary'|'outline'|'danger'|'ghost'|'link'} [props.variant]
+ * @param {'sm'|'md'|'lg'} [props.size]
+ * @param {boolean} [props.loading]
+ * @param {React.ReactNode} [props.children]
+ * @param {string} [props.className]
+ */
+export const Button = React.forwardRef(
+  (
+    {
+      children,
+      variant = "primary",
+      size = "md",
+      loading = false,
+      className = "",
+      disabled,
+      asChild, // 🧩 ignore unknown prop safely
+      ...props
+    },
+    ref
+  ) => {
+    // Remove unsupported props before spreading to DOM
+    const safeProps = { ...props };
+    delete safeProps.asChild;
 
-  return (
-    <button
-      type={type}
-      disabled={disabled}
-      aria-disabled={disabled}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      onFocus={() => setFocus(true)}
-      onBlur={() => setFocus(false)}
-      style={combinedStyle}
-      {...props}
-    >
-      {children}
-    </button>
-  );
-}
+    return (
+      <button
+        ref={ref}
+        disabled={disabled || loading}
+        className={clsx(baseStyles, variants[variant], sizes[size], className)}
+        {...safeProps}
+      >
+        {loading && (
+          <Loader2 className="animate-spin mr-2 h-4 w-4 text-current" />
+        )}
+        {children}
+      </button>
+    );
+  }
+);
+
+Button.displayName = "Button";
+
+export default Button;

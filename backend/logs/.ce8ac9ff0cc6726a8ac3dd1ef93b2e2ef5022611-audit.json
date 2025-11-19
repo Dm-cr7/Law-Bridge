@@ -1,0 +1,35 @@
+{
+    "keep": {
+        "days": true,
+        "amount": 30
+    },
+    "auditLog": "D:\\back up main\\legal-justice-dashboard\\backend\\logs\\.ce8ac9ff0cc6726a8ac3dd1ef93b2e2ef5022611-audit.json",
+    "files": [
+        {
+            "date": 1762337370949,
+            "name": "D:\\back up main\\legal-justice-dashboard\\backend\\logs\\app-2025-11-05.log",
+            "hash": "6f00db4cfab8873729b98b4289e349039dbf519c57ffc5b81006be15690c862b"
+        },
+        {
+            "date": 1762427072441,
+            "name": "D:\\back up main\\legal-justice-dashboard\\backend\\logs\\app-2025-11-06.log",
+            "hash": "eee398659d1c888ea71f77b59f5c2b4b96abb2d79ef8719e8784dfcfe6d7b3a6"
+        },
+        {
+            "date": 1763035459840,
+            "name": "D:\\back up main\\legal-justice-dashboard\\backend\\logs\\app-2025-11-13.log",
+            "hash": "fa6d538ec67a2ba16c575e24b59c8a9cc48a39de0a689e0a97071cd18403ff29"
+        },
+        {
+            "date": 1763096106129,
+            "name": "D:\\back up main\\legal-justice-dashboard\\backend\\logs\\app-2025-11-14.log",
+            "hash": "9297175dc7573bf49ba3dc5727efde2e6fe304570485dc9099e492d9870d2918"
+        },
+        {
+            "date": 1763187211600,
+            "name": "D:\\back up main\\legal-justice-dashboard\\backend\\logs\\app-2025-11-15.log",
+            "hash": "b26c823e90422e2a09bd00971a9e8f5cc326e9f63273e7c3a1bea7b7b9977483"
+        }
+    ],
+    "hashType": "sha256"
+}

@@ -4,7 +4,7 @@ import Card from "../components/ui/Card"
 
 export default function TestUI() {
   return (
-    <div className="min-h-screen flex items-center justify-center gap-6 p-8 bg-gray-100 dark:bg-gray-900">
+    <div className="min-h-screen flex items-center justify-center gap-6 p-8 bg-black-100 dark:bg-black-900">
       <Card className="max-w-xs">
         <h2 className="text-xl font-heading mb-4">Card Title</h2>
         <p>This is a test card content.</p>

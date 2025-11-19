@@ -1,0 +1,93 @@
+{"level":"info","message":"\u001b[0mOPTIONS /api/auth/logout \u001b[32m204\u001b[0m 1.197 ms - 0\u001b[0m","timestamp":"2025-11-15 14:18:43"}
+{"level":"info","message":"\u001b[0mPOST /api/auth/logout \u001b[32m200\u001b[0m 13.433 ms - 53\u001b[0m","timestamp":"2025-11-15 14:18:43"}
+{"level":"info","message":"Socket disconnected: 5AONblplKo-IoDIcAAAB (client namespace disconnect)","timestamp":"2025-11-15 14:18:43"}
+{"level":"info","message":"\u001b[0mOPTIONS /api/auth/login \u001b[32m204\u001b[0m 4.343 ms - 0\u001b[0m","timestamp":"2025-11-15 14:19:09"}
+{"level":"info","message":"\u001b[0mPOST /api/auth/login \u001b[32m200\u001b[0m 905.144 ms - 351\u001b[0m","timestamp":"2025-11-15 14:19:10"}
+{"level":"info","message":"Socket connected: mhlP_IlNgAcDbkUkAAAD","timestamp":"2025-11-15 14:19:10"}
+{"level":"info","message":"\u001b[0mOPTIONS /api/auth/login \u001b[32m204\u001b[0m 0.439 ms - 0\u001b[0m","timestamp":"2025-11-15 14:19:17"}
+{"level":"info","message":"\u001b[0mPOST /api/auth/login \u001b[32m200\u001b[0m 1279.153 ms - 351\u001b[0m","timestamp":"2025-11-15 14:19:18"}
+{"level":"info","message":"\u001b[0mOPTIONS /api/auth/login \u001b[32m204\u001b[0m 4.467 ms - 0\u001b[0m","timestamp":"2025-11-15 14:19:28"}
+{"level":"info","message":"\u001b[0mPOST /api/auth/login \u001b[32m200\u001b[0m 1513.242 ms - 351\u001b[0m","timestamp":"2025-11-15 14:19:30"}
+{"level":"info","message":"\u001b[0mOPTIONS /api/auth/login \u001b[32m204\u001b[0m 0.889 ms - 0\u001b[0m","timestamp":"2025-11-15 14:19:43"}
+{"level":"info","message":"\u001b[0mPOST /api/auth/login \u001b[32m200\u001b[0m 1780.415 ms - 351\u001b[0m","timestamp":"2025-11-15 14:19:45"}
+{"level":"info","message":"\u001b[0mPOST /api/auth/login \u001b[32m200\u001b[0m 1306.990 ms - 351\u001b[0m","timestamp":"2025-11-15 14:19:48"}
+{"level":"info","message":"\u001b[0mOPTIONS /api/auth/login \u001b[32m204\u001b[0m 1.010 ms - 0\u001b[0m","timestamp":"2025-11-15 14:19:52"}
+{"level":"info","message":"\u001b[0mPOST /api/auth/login \u001b[32m200\u001b[0m 1311.312 ms - 349\u001b[0m","timestamp":"2025-11-15 14:19:54"}
+{"level":"info","message":"\u001b[0mOPTIONS /api/hearings/calendar \u001b[32m204\u001b[0m 1.107 ms - 0\u001b[0m","timestamp":"2025-11-15 14:20:01"}
+{"level":"info","message":"\u001b[0mOPTIONS /api/hearings/calendar \u001b[32m204\u001b[0m 0.356 ms - 0\u001b[0m","timestamp":"2025-11-15 14:20:01"}
+{"level":"info","message":"Socket connected: 73_kil--DHDO7SZYAAAG","timestamp":"2025-11-15 14:20:01"}
+{"level":"info","message":"\u001b[0mGET /api/hearings/calendar \u001b[31m500\u001b[0m 468.093 ms - 37\u001b[0m","timestamp":"2025-11-15 14:20:02"}
+{"level":"info","message":"\u001b[0mGET /api/hearings/calendar \u001b[31m500\u001b[0m 789.104 ms - 37\u001b[0m","timestamp":"2025-11-15 14:20:02"}
+{"level":"info","message":"Socket disconnected: mhlP_IlNgAcDbkUkAAAD (transport close)","timestamp":"2025-11-15 14:20:16"}
+{"level":"info","message":"Socket disconnected: 73_kil--DHDO7SZYAAAG (transport close)","timestamp":"2025-11-15 14:20:16"}
+{"level":"info","message":"Socket connected: yJrvfjvBCPKKPaPbAAAI","timestamp":"2025-11-15 14:20:17"}
+{"level":"info","message":"\u001b[0mOPTIONS /api/hearings/calendar \u001b[32m204\u001b[0m 0.317 ms - 0\u001b[0m","timestamp":"2025-11-15 14:20:17"}
+{"level":"info","message":"\u001b[0mOPTIONS /api/hearings/calendar \u001b[32m204\u001b[0m 0.341 ms - 0\u001b[0m","timestamp":"2025-11-15 14:20:17"}
+{"level":"info","message":"Socket connected: KyAweWG7M4YzfIxPAAAK","timestamp":"2025-11-15 14:20:17"}
+{"level":"info","message":"\u001b[0mGET /api/hearings/calendar \u001b[31m500\u001b[0m 749.234 ms - 37\u001b[0m","timestamp":"2025-11-15 14:20:18"}
+{"level":"info","message":"\u001b[0mGET /api/hearings/calendar \u001b[31m500\u001b[0m 314.427 ms - 37\u001b[0m","timestamp":"2025-11-15 14:20:18"}
+{"level":"info","message":"Socket disconnected: yJrvfjvBCPKKPaPbAAAI (transport close)","timestamp":"2025-11-15 14:20:32"}
+{"level":"info","message":"Socket disconnected: KyAweWG7M4YzfIxPAAAK (transport close)","timestamp":"2025-11-15 14:20:32"}
+{"level":"info","message":"Socket connected: WtBkb6SRVAMCYU--AAAM","timestamp":"2025-11-15 14:20:34"}
+{"level":"info","message":"\u001b[0mOPTIONS /api/hearings/calendar \u001b[32m204\u001b[0m 0.349 ms - 0\u001b[0m","timestamp":"2025-11-15 14:20:34"}
+{"level":"info","message":"\u001b[0mOPTIONS /api/hearings/calendar \u001b[32m204\u001b[0m 0.952 ms - 0\u001b[0m","timestamp":"2025-11-15 14:20:34"}
+{"level":"info","message":"Socket connected: WaNdZ3FLj4MCjMmjAAAP","timestamp":"2025-11-15 14:20:34"}
+{"level":"info","message":"\u001b[0mGET /api/hearings/calendar \u001b[31m500\u001b[0m 263.387 ms - 37\u001b[0m","timestamp":"2025-11-15 14:20:35"}
+{"level":"info","message":"\u001b[0mGET /api/hearings/calendar \u001b[31m500\u001b[0m 247.179 ms - 37\u001b[0m","timestamp":"2025-11-15 14:20:35"}
+{"level":"info","message":"Socket disconnected: WtBkb6SRVAMCYU--AAAM (transport close)","timestamp":"2025-11-15 14:20:49"}
+{"level":"info","message":"Socket disconnected: WaNdZ3FLj4MCjMmjAAAP (transport close)","timestamp":"2025-11-15 14:20:50"}
+{"level":"info","message":"Socket connected: azAz30yWIRJuo_H5AAAR","timestamp":"2025-11-15 14:20:51"}
+{"level":"info","message":"\u001b[0mOPTIONS /api/hearings/calendar \u001b[32m204\u001b[0m 0.636 ms - 0\u001b[0m","timestamp":"2025-11-15 14:20:51"}
+{"level":"info","message":"Socket connected: HU7SUhOxMLRa8dNrAAAU","timestamp":"2025-11-15 14:20:51"}
+{"level":"info","message":"\u001b[0mOPTIONS /api/hearings/calendar \u001b[32m204\u001b[0m 0.415 ms - 0\u001b[0m","timestamp":"2025-11-15 14:20:51"}
+{"level":"info","message":"\u001b[0mGET /api/hearings/calendar \u001b[31m500\u001b[0m 216.559 ms - 37\u001b[0m","timestamp":"2025-11-15 14:20:51"}
+{"level":"info","message":"\u001b[0mGET /api/hearings/calendar \u001b[31m500\u001b[0m 240.241 ms - 37\u001b[0m","timestamp":"2025-11-15 14:20:51"}
+{"level":"warn","message":"Received SIGINT, shutting down...","timestamp":"2025-11-15 14:39:19"}
+{"level":"info","message":"Socket disconnected: azAz30yWIRJuo_H5AAAR (server shutting down)","timestamp":"2025-11-15 14:39:19"}
+{"level":"info","message":"Socket disconnected: HU7SUhOxMLRa8dNrAAAU (server shutting down)","timestamp":"2025-11-15 14:39:19"}
+{"level":"info","message":"📦 MongoDB connected","timestamp":"2025-11-15 15:28:51"}
+{"level":"info","message":"🚀 Server running at http://localhost:5000 in development","timestamp":"2025-11-15 15:28:51"}
+{"level":"info","message":"🟢 Socket connected → 4EjbFyLFxB-HSa4PAAAB","timestamp":"2025-11-15 15:28:58"}
+{"level":"info","message":"🔴 Socket 4EjbFyLFxB-HSa4PAAAB disconnected (transport close)","timestamp":"2025-11-15 15:29:20"}
+{"level":"info","message":"🟢 Socket connected → FWAUmunhwKts5E34AAAD","timestamp":"2025-11-15 15:29:29"}
+{"level":"info","message":"\u001b[0mOPTIONS /api/hearings/calendar \u001b[32m204\u001b[0m 4.688 ms - 0\u001b[0m","timestamp":"2025-11-15 15:29:30"}
+{"level":"info","message":"\u001b[0mOPTIONS /api/hearings/calendar \u001b[32m204\u001b[0m 0.811 ms - 0\u001b[0m","timestamp":"2025-11-15 15:29:30"}
+{"level":"info","message":"🟢 Socket connected → OofRYmnRVUX06LyDAAAG","timestamp":"2025-11-15 15:29:30"}
+{"level":"info","message":"\u001b[0mGET /api/hearings/calendar \u001b[33m400\u001b[0m 303.413 ms - 40\u001b[0m","timestamp":"2025-11-15 15:29:30"}
+{"level":"info","message":"\u001b[0mGET /api/hearings/calendar \u001b[33m400\u001b[0m 222.456 ms - 40\u001b[0m","timestamp":"2025-11-15 15:29:30"}
+{"level":"info","message":"🔴 Socket FWAUmunhwKts5E34AAAD disconnected (transport close)","timestamp":"2025-11-15 15:52:55"}
+{"level":"info","message":"🔴 Socket OofRYmnRVUX06LyDAAAG disconnected (transport close)","timestamp":"2025-11-15 15:52:55"}
+{"level":"info","message":"🟢 Socket connected → vADB6izmZTgWHXLUAAAJ","timestamp":"2025-11-15 16:01:09"}
+{"level":"info","message":"🟢 Socket connected → J89Lr25gcpW4UXECAAAK","timestamp":"2025-11-15 16:01:09"}
+{"level":"info","message":"🔴 Socket vADB6izmZTgWHXLUAAAJ disconnected (transport close)","timestamp":"2025-11-15 16:17:45"}
+{"level":"info","message":"🔴 Socket J89Lr25gcpW4UXECAAAK disconnected (transport close)","timestamp":"2025-11-15 16:17:46"}
+{"level":"info","message":"🟢 Socket connected → Grf5glMr9xfRr_j6AAAM","timestamp":"2025-11-15 16:17:48"}
+{"level":"info","message":"\u001b[0mOPTIONS /api/hearings/calendar \u001b[32m204\u001b[0m 12.034 ms - 0\u001b[0m","timestamp":"2025-11-15 16:17:49"}
+{"level":"info","message":"🟢 Socket connected → LQIscz_pq31lNoWAAAAP","timestamp":"2025-11-15 16:17:49"}
+{"level":"info","message":"\u001b[0mOPTIONS /api/hearings/calendar \u001b[32m204\u001b[0m 0.530 ms - 0\u001b[0m","timestamp":"2025-11-15 16:17:49"}
+{"level":"info","message":"\u001b[0mGET /api/hearings/calendar \u001b[33m400\u001b[0m 2653.443 ms - 40\u001b[0m","timestamp":"2025-11-15 16:17:51"}
+{"level":"info","message":"\u001b[0mGET /api/hearings/calendar \u001b[33m400\u001b[0m 288.420 ms - 40\u001b[0m","timestamp":"2025-11-15 16:17:52"}
+{"level":"info","message":"🔴 Socket LQIscz_pq31lNoWAAAAP disconnected (client namespace disconnect)","timestamp":"2025-11-15 16:18:09"}
+{"level":"info","message":"\u001b[0mOPTIONS /api/users/profile \u001b[32m204\u001b[0m 0.537 ms - 0\u001b[0m","timestamp":"2025-11-15 16:18:09"}
+{"level":"info","message":"\u001b[0mGET /api/users/profile \u001b[32m200\u001b[0m 394.808 ms - 413\u001b[0m","timestamp":"2025-11-15 16:18:10"}
+{"level":"info","message":"\u001b[0mOPTIONS /api/users/activity?page=1&limit=12 \u001b[32m204\u001b[0m 1.241 ms - 0\u001b[0m","timestamp":"2025-11-15 16:18:10"}
+{"level":"info","message":"\u001b[0mGET /api/users/activity?page=1&limit=12 \u001b[33m404\u001b[0m 151.438 ms - 157\u001b[0m","timestamp":"2025-11-15 16:18:10"}
+{"level":"info","message":"\u001b[0mOPTIONS /api/hearings/calendar \u001b[32m204\u001b[0m 0.573 ms - 0\u001b[0m","timestamp":"2025-11-15 16:18:15"}
+{"level":"info","message":"\u001b[0mOPTIONS /api/hearings/calendar \u001b[32m204\u001b[0m 0.532 ms - 0\u001b[0m","timestamp":"2025-11-15 16:18:15"}
+{"level":"info","message":"🟢 Socket connected → cR4dpuDHTSgKJpRBAAAS","timestamp":"2025-11-15 16:18:15"}
+{"level":"info","message":"\u001b[0mGET /api/hearings/calendar \u001b[33m400\u001b[0m 621.871 ms - 40\u001b[0m","timestamp":"2025-11-15 16:18:15"}
+{"level":"info","message":"\u001b[0mGET /api/hearings/calendar \u001b[33m400\u001b[0m 869.603 ms - 40\u001b[0m","timestamp":"2025-11-15 16:18:16"}
+{"level":"info","message":"🔴 Socket cR4dpuDHTSgKJpRBAAAS disconnected (client namespace disconnect)","timestamp":"2025-11-15 16:18:19"}
+{"level":"info","message":"\u001b[0mOPTIONS /api/users/profile \u001b[32m204\u001b[0m 1.054 ms - 0\u001b[0m","timestamp":"2025-11-15 16:18:19"}
+{"level":"info","message":"\u001b[0mGET /api/users/profile \u001b[0m-\u001b[0m - ms - -\u001b[0m","timestamp":"2025-11-15 16:18:21"}
+{"level":"info","message":"🔴 Socket Grf5glMr9xfRr_j6AAAM disconnected (transport close)","timestamp":"2025-11-15 16:18:22"}
+{"level":"info","message":"🟢 Socket connected → Oi75_37FfH_9pdXFAAAU","timestamp":"2025-11-15 16:18:23"}
+{"level":"info","message":"\u001b[0mOPTIONS /api/hearings/calendar \u001b[32m204\u001b[0m 0.742 ms - 0\u001b[0m","timestamp":"2025-11-15 16:18:29"}
+{"level":"info","message":"🟢 Socket connected → _RU2ZsiWiAgrYks_AAAX","timestamp":"2025-11-15 16:18:29"}
+{"level":"info","message":"\u001b[0mOPTIONS /api/hearings/calendar \u001b[32m204\u001b[0m 0.541 ms - 0\u001b[0m","timestamp":"2025-11-15 16:18:29"}
+{"level":"info","message":"\u001b[0mGET /api/hearings/calendar \u001b[33m400\u001b[0m 292.076 ms - 40\u001b[0m","timestamp":"2025-11-15 16:18:29"}
+{"level":"info","message":"\u001b[0mGET /api/hearings/calendar \u001b[33m400\u001b[0m 243.921 ms - 40\u001b[0m","timestamp":"2025-11-15 16:18:29"}
+{"level":"info","message":"🔴 Socket _RU2ZsiWiAgrYks_AAAX disconnected (client namespace disconnect)","timestamp":"2025-11-15 17:10:12"}
+{"level":"info","message":"\u001b[0mOPTIONS /api/hearings/calendar \u001b[32m204\u001b[0m 1.579 ms - 0\u001b[0m","timestamp":"2025-11-15 17:10:12"}
+{"level":"info","message":"🟢 Socket connected → rS-OsAXF-TdsxkqdAAAa","timestamp":"2025-11-15 17:10:12"}
+{"level":"info","message":"\u001b[0mGET /api/hearings/calendar \u001b[33m400\u001b[0m 597.227 ms - 40\u001b[0m","timestamp":"2025-11-15 17:10:12"}

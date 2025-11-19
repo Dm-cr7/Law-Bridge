@@ -1,241 +1,235 @@
-import React, { useEffect, useState } from 'react';
-import API from '../api/axios'; // ✅ Use secured API instance
-import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
-  ResponsiveContainer, PieChart, Pie, Cell
-} from 'recharts';
-import { Briefcase, Users, ClipboardCheck, AlertTriangle } from 'lucide-react';
+/**
+ * Analytics.jsx
+ * ------------------------------------------------------------
+ * Secure, user-specific analytics overview
+ * ------------------------------------------------------------
+ * ✅ Fetches only current user’s data
+ * ✅ Case, task, and client summaries
+ * ✅ Monthly case trends + case status distribution
+ * ✅ Removed ADR section entirely
+ */
 
-const Card = ({ children, className = '' }) => (
-  <div className={`card ${className}`}>{children}</div>
+import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import api from "@/utils/api";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+} from "recharts";
+import { Briefcase, Users, ClipboardCheck, AlertTriangle } from "lucide-react";
+
+const COLORS = ["#3B82F6", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6"];
+
+const Card = ({ children, className = "" }) => (
+  <div className={`bg-white shadow-md rounded-xl p-5 border ${className}`}>
+    {children}
+  </div>
 );
 
 const StatCard = ({ title, value, icon }) => (
-  <Card className="stat-card">
-    <div className="stat-inner">
-      <div className="stat-icon">{icon}</div>
-      <div className="stat-text">
-        <p className="stat-title">{title}</p>
-        <p className="stat-value">{value}</p>
-      </div>
+  <Card className="flex items-center gap-4">
+    <div className="flex items-center justify-center h-12 w-12 bg-blue-100 text-blue-600 rounded-lg">
+      {icon}
+    </div>
+    <div>
+      <p className="text-sm text-gray-500">{title}</p>
+      <p className="text-2xl font-semibold text-gray-900">{value ?? "—"}</p>
     </div>
   </Card>
 );
 
-const COLORS = ['#FFBB28', '#0088FE', '#00C49F', '#FF8042', '#A78BFA'];
+const StatSkeleton = () => (
+  <div className="bg-gray-200 animate-pulse rounded-lg h-20" />
+);
+const ChartSkeleton = () => (
+  <div className="bg-gray-200 animate-pulse rounded-lg h-72" />
+);
 
 export default function Analytics() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const navigate = useNavigate();
+
   const [stats, setStats] = useState({
     totalCases: 0,
     totalClients: 0,
     openTasks: 0,
-    overdueTasks: 0
+    overdueTasks: 0,
   });
+
   const [chartData, setChartData] = useState({
     monthlyCaseData: [],
-    caseStatusData: []
+    caseStatusData: [],
   });
 
   useEffect(() => {
-    const fetchData = async () => {
-      setLoading(true);
-      setError(null);
+    const fetchAnalytics = async () => {
       try {
-        const [summaryRes, chartsRes] = await Promise.all([
-          API.get('/api/reports/summary'), // ✅ uses token
-          API.get('/api/reports/charts')
+        setLoading(true);
+        setError(null);
+
+        const [summaryRes, casesRes] = await Promise.all([
+          api.get("/reports/summary?scope=self"),
+          api.get("/reports/cases/summary?scope=self"),
         ]);
-        setStats(summaryRes.data);
-        setChartData(chartsRes.data);
+
+        const summary = summaryRes.data?.summary || {};
+        const caseData = casesRes.data?.data || {};
+
+        setStats({
+          totalCases: caseData.total || 0,
+          totalClients: summary.totalClients || 0,
+          openTasks: summary.openTasks || 0,
+          overdueTasks: summary.overdueTasks || 0,
+        });
+
+        setChartData({
+          monthlyCaseData: caseData.byMonth || [],
+          caseStatusData:
+            caseData.byStatus?.map((s) => ({
+              name: s.status,
+              value: s.count,
+            })) || [],
+        });
       } catch (err) {
-        console.error("Analytics fetch error:", err);
+        console.error("❌ Analytics fetch error:", err);
+        const status = err.response?.status;
+        if (status === 401) {
+          localStorage.removeItem("token");
+          navigate("/login");
+          return;
+        }
+        if (status === 403) {
+          setError("🚫 Access denied: insufficient permissions.");
+          return;
+        }
         setError(err.response?.data?.message || "Failed to load analytics data.");
       } finally {
         setLoading(false);
       }
     };
-    fetchData();
-  }, []);
 
-  const StatSkeleton = () => <div className="skeleton stat-skeleton" />;
-  const ChartSkeleton = () => <div className="skeleton chart-skeleton" />;
+    fetchAnalytics();
+  }, [navigate]);
 
-  if (error) return <div className="error-msg">Error: {error}</div>;
+  if (error) {
+    return (
+      <div className="p-8 text-center text-red-600 font-medium">
+        ⚠️ {error}
+      </div>
+    );
+  }
 
   return (
-    <div className="analytics-page">
-      <div className="analytics-header">
-        <h1 className="analytics-title">Analytics Overview</h1>
-        <p className="analytics-subtitle">Visual insights into your firm's performance.</p>
-      </div>
+    <div className="p-8 bg-gray-50 min-h-screen text-gray-900">
+      {/* Header */}
+      <header className="mb-8">
+        <h1 className="text-2xl font-bold">Analytics Overview</h1>
+        <p className="text-gray-500">
+          User-specific performance summary and case insights.
+        </p>
+      </header>
 
-      <div className="stats-grid">
+      {/* KPI Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
         {loading ? (
           <>
             <StatSkeleton /> <StatSkeleton /> <StatSkeleton /> <StatSkeleton />
           </>
         ) : (
           <>
-            <StatCard title="Total Cases" value={stats.totalCases} icon={<Briefcase size={24} />} />
-            <StatCard title="Total Clients" value={stats.totalClients} icon={<Users size={24} />} />
-            <StatCard title="Open Tasks" value={stats.openTasks} icon={<ClipboardCheck size={24} />} />
-            <StatCard title="Overdue Tasks" value={stats.overdueTasks} icon={<AlertTriangle size={24} />} />
+            <StatCard
+              title="Total Cases"
+              value={stats.totalCases}
+              icon={<Briefcase size={24} />}
+            />
+            <StatCard
+              title="Total Clients"
+              value={stats.totalClients}
+              icon={<Users size={24} />}
+            />
+            <StatCard
+              title="Open Tasks"
+              value={stats.openTasks}
+              icon={<ClipboardCheck size={24} />}
+            />
+            <StatCard
+              title="Overdue Tasks"
+              value={stats.overdueTasks}
+              icon={<AlertTriangle size={24} />}
+            />
           </>
         )}
       </div>
 
-      <div className="charts-grid">
-        <Card className="bar-chart-card">
-          <h2 className="chart-title">New vs. Closed Cases (Monthly)</h2>
+      {/* Charts */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Monthly Trend */}
+        <Card>
+          <h2 className="text-lg font-semibold mb-3">New vs Closed Cases (Monthly)</h2>
           {loading ? (
             <ChartSkeleton />
-          ) : (
+          ) : chartData.monthlyCaseData.length > 0 ? (
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={chartData.monthlyCaseData}>
                 <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.2} />
-                <XAxis dataKey="name" />
+                <XAxis dataKey="month" />
                 <YAxis />
-                <Tooltip contentStyle={{ backgroundColor: '#1f2937', borderRadius: '8px', color: 'white' }} />
+                <Tooltip />
                 <Legend />
-                <Bar dataKey="newCases" fill="#3b82f6" name="New Cases" />
-                <Bar dataKey="closedCases" fill="#10b981" name="Closed Cases" />
+                <Bar dataKey="newCases" fill="#3B82F6" name="New Cases" />
+                <Bar dataKey="closedCases" fill="#10B981" name="Closed Cases" />
               </BarChart>
             </ResponsiveContainer>
+          ) : (
+            <div className="text-gray-500 text-sm text-center py-10">
+              No monthly case data available.
+            </div>
           )}
         </Card>
 
-        <Card className="pie-chart-card">
-          <h2 className="chart-title">Case Status Distribution</h2>
+        {/* Status Pie */}
+        <Card>
+          <h2 className="text-lg font-semibold mb-3">Case Status Distribution</h2>
           {loading ? (
             <ChartSkeleton />
-          ) : (
+          ) : chartData.caseStatusData.length > 0 ? (
             <ResponsiveContainer width="100%" height={300}>
               <PieChart>
                 <Pie
-                  data={chartData.caseStatusData || []}
+                  data={chartData.caseStatusData}
                   cx="50%"
                   cy="50%"
                   outerRadius={100}
                   dataKey="value"
-                  nameKey="name"
-                  label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                  label={({ name, percent }) =>
+                    `${name} ${(percent * 100).toFixed(0)}%`
+                  }
                 >
-                  {(chartData.caseStatusData || []).map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  {chartData.caseStatusData.map((entry, idx) => (
+                    <Cell key={idx} fill={COLORS[idx % COLORS.length]} />
                   ))}
                 </Pie>
-                <Tooltip contentStyle={{ backgroundColor: '#1f2937', borderRadius: '8px', color: 'white' }} />
+                <Tooltip />
                 <Legend />
               </PieChart>
             </ResponsiveContainer>
+          ) : (
+            <div className="text-gray-500 text-sm text-center py-10">
+              No case status data available.
+            </div>
           )}
         </Card>
       </div>
-
-      <style>{`
-        .analytics-page {
-          padding: 2rem;
-          background: #f9fafb;
-          color: #1f2937;
-        }
-        .analytics-header {
-          margin-bottom: 2rem;
-        }
-        .analytics-title {
-          font-size: 2rem;
-          font-weight: bold;
-        }
-        .analytics-subtitle {
-          font-size: 0.875rem;
-          color: #6b7280;
-        }
-        .stats-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-          gap: 1.25rem;
-        }
-        .charts-grid {
-          display: grid;
-          grid-template-columns: 1fr;
-          gap: 2rem;
-          margin-top: 2rem;
-        }
-        @media (min-width: 1024px) {
-          .charts-grid {
-            grid-template-columns: 3fr 2fr;
-          }
-        }
-        .card {
-          background: white;
-          border-radius: 0.5rem;
-          box-shadow: 0 1px 2px rgba(0,0,0,0.06);
-          border: 1px solid #e5e7eb;
-        }
-        .stat-card {
-          padding: 1.25rem;
-        }
-        .stat-inner {
-          display: flex;
-          align-items: center;
-        }
-        .stat-icon {
-          height: 3rem;
-          width: 3rem;
-          background: #dbeafe;
-          color: #2563eb;
-          border-radius: 0.5rem;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-        .stat-text {
-          margin-left: 1rem;
-        }
-        .stat-title {
-          font-size: 0.875rem;
-          color: #6b7280;
-        }
-        .stat-value {
-          font-size: 1.875rem;
-          font-weight: 600;
-          color: #111827;
-        }
-        .chart-title {
-          font-size: 1.125rem;
-          font-weight: 600;
-          margin-bottom: 1rem;
-          color: #111827;
-        }
-        .bar-chart-card, .pie-chart-card {
-          padding: 1.5rem;
-        }
-        .skeleton {
-          border-radius: 0.5rem;
-          animation: pulse 1.5s ease-in-out infinite;
-          background-color: #e5e7eb;
-        }
-        .stat-skeleton {
-          height: 7rem;
-        }
-        .chart-skeleton {
-          height: 18rem;
-        }
-        .error-msg {
-          padding: 2rem;
-          text-align: center;
-          color: #dc2626;
-        }
-        @keyframes pulse {
-          0%, 100% {
-            opacity: 1;
-          }
-          50% {
-            opacity: 0.5;
-          }
-        }
-      `}</style>
     </div>
   );
 }

@@ -1,84 +1,70 @@
+// frontend/src/components/AnalyticsCards.jsx
 import React from "react";
 import PropTypes from "prop-types";
+import { Clock, Loader2, CheckCircle } from "lucide-react";
+import { motion } from "framer-motion";
 
+/**
+ * AnalyticsCards Component
+ * ----------------------------------------------------------
+ * Displays key workflow metrics — Pending, In Progress, Done.
+ * Responsive, color-coded, dark-mode friendly, and animated.
+ */
 export default function AnalyticsCards({ pending = 0, inProgress = 0, done = 0 }) {
+  const cards = [
+    {
+      title: "Pending",
+      value: pending,
+      bg: "bg-blue-50 dark:bg-blue-900/30",
+      border: "border-blue-200 dark:border-blue-800",
+      icon: <Clock size={26} className="text-blue-600 dark:text-blue-400" />,
+      text: "text-blue-700 dark:text-blue-300",
+    },
+    {
+      title: "In Progress",
+      value: inProgress,
+      bg: "bg-amber-50 dark:bg-amber-900/30",
+      border: "border-amber-200 dark:border-amber-800",
+      icon: <Loader2 size={26} className="text-amber-600 dark:text-amber-400" />,
+      text: "text-amber-700 dark:text-amber-300",
+    },
+    {
+      title: "Done",
+      value: done,
+      bg: "bg-green-50 dark:bg-green-900/30",
+      border: "border-green-200 dark:border-green-800",
+      icon: <CheckCircle size={26} className="text-green-600 dark:text-green-400" />,
+      text: "text-green-700 dark:text-green-300",
+    },
+  ];
+
   return (
-    <>
-      <div className="analytics-cards">
-        <div className="card">
-          <h2>Pending</h2>
-          <p>{pending}</p>
-        </div>
-        <div className="card">
-          <h2>In Progress</h2>
-          <p>{inProgress}</p>
-        </div>
-        <div className="card">
-          <h2>Done</h2>
-          <p>{done}</p>
-        </div>
-      </div>
-
-      <style jsx>{`
-        .analytics-cards {
-          display: grid;
-          grid-template-columns: 1fr;
-          gap: 16px;
-          margin-bottom: 24px;
-          padding: 0 1rem;
-        }
-
-        @media (min-width: 640px) {
-          .analytics-cards {
-            grid-template-columns: repeat(3, 1fr);
-            padding: 0;
-          }
-        }
-
-        .card {
-          background-color: white;
-          padding: 20px;
-          border-radius: 12px;
-          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
-          border: 1px solid #e5e7eb;
-          transition: box-shadow 0.2s ease;
-          text-align: center;
-        }
-
-        .card:hover {
-          box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
-        }
-
-        .card h2 {
-          font-size: 1rem;
-          font-weight: 600;
-          margin-bottom: 8px;
-          color: #374151;
-        }
-
-        .card p {
-          font-size: 2rem;
-          font-weight: bold;
-          color: #1a73e8;
-          margin: 0;
-        }
-
-        @media (prefers-color-scheme: dark) {
-          .card {
-            background-color: #1f2937;
-            border-color: #374151;
-          }
-
-          .card h2 {
-            color: #f9fafb;
-          }
-
-          .card p {
-            color: #60a5fa;
-          }
-        }
-      `}</style>
-    </>
+    <div
+      className="grid grid-cols-1 sm:grid-cols-3 gap-4 p-4"
+      aria-label="Analytics Summary Cards"
+    >
+      {cards.map((card) => (
+        <motion.div
+          key={card.title}
+          whileHover={{ scale: 1.04 }}
+          whileTap={{ scale: 0.98 }}
+          className={`rounded-xl border shadow-sm ${card.bg} ${card.border} 
+                      transition-all duration-300 p-5 flex flex-col 
+                      items-center justify-center text-center`}
+        >
+          <div className="mb-2" aria-hidden="true">
+            {card.icon}
+          </div>
+          <h2 className={`text-base font-semibold ${card.text}`}>{card.title}</h2>
+          <p
+            className="text-3xl font-bold text-black-900 dark:text-black-100 mt-1"
+            aria-label={`${card.title} count`}
+          >
+            {Number.isFinite(card.value) ? card.value.toLocaleString() : "—"}
+          </p>
+        </motion.div>
+      ))}
+    </div>
   );
 }
 

@@ -1,107 +1,101 @@
-import React, { useEffect, useRef } from 'react';
-import { X } from 'lucide-react';
+// frontend/src/components/ui/Modal.jsx
+import React, { useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { X } from "lucide-react";
+import clsx from "clsx";
 
-export default function Modal({ children, onClose, title, isOpen }) {
-  const modalRef = useRef(null);
+/**
+ * LawBridge Modal Component
+ * ------------------------------------
+ * Accessible, responsive, and animated modal for dialogs and confirmations.
+ */
 
-  // Close on Esc key
+export const Modal = ({
+  isOpen,
+  onClose,
+  title,
+  children,
+  size = "md",
+  showClose = true,
+  overlayClose = true,
+  className = "",
+}) => {
+  // Close on ESC key
   useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape') onClose();
-    };
-    if (isOpen) document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
+    const handleEsc = (e) => e.key === "Escape" && onClose?.();
+    if (isOpen) document.addEventListener("keydown", handleEsc);
+    return () => document.removeEventListener("keydown", handleEsc);
   }, [isOpen, onClose]);
 
-  // Prevent render if not open
-  if (!isOpen) return null;
-
-  // Styles
-  const backdropStyle = {
-    position: 'fixed',
-    inset: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 1000,
-    padding: '1rem',
-    animation: 'fadeIn 0.3s ease-in-out',
-  };
-
-  const modalStyle = {
-    backgroundColor: 'var(--modal-bg, #ffffff)',
-    color: 'var(--modal-text, #1e293b)',
-    border: '1px solid var(--modal-border, #e2e8f0)',
-    borderRadius: '12px',
-    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.15)',
-    width: '100%',
-    maxWidth: '500px',
-    padding: '1.5rem',
-    position: 'relative',
-    animation: 'scaleIn 0.3s ease',
-    outline: 'none',
-  };
-
-  const headerStyle = {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingBottom: '1rem',
-    borderBottom: '1px solid var(--modal-border, #e2e8f0)',
-  };
-
-  const closeButtonStyle = {
-    background: 'transparent',
-    border: 'none',
-    borderRadius: '50%',
-    padding: '0.25rem',
-    cursor: 'pointer',
-    color: 'var(--modal-muted, #6b7280)',
-  };
-
-  const bodyStyle = {
-    marginTop: '1rem',
+  const sizeClasses = {
+    sm: "max-w-sm",
+    md: "max-w-lg",
+    lg: "max-w-2xl",
+    xl: "max-w-4xl",
   };
 
   return (
-    <>
-      <style>
-        {`
-        @keyframes fadeIn {
-          from { opacity: 0 }
-          to { opacity: 1 }
-        }
+    <AnimatePresence>
+      {isOpen && (
+        <>
+          {/* Overlay */}
+          <motion.div
+            key="overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 0.5 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm"
+            onClick={overlayClose ? onClose : undefined}
+          />
 
-        @keyframes scaleIn {
-          from { transform: scale(0.95); opacity: 0; }
-          to { transform: scale(1); opacity: 1; }
-        }
-      `}
-      </style>
+          {/* Modal Container */}
+          <motion.div
+            key="modal"
+            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 10 }}
+            transition={{ duration: 0.2 }}
+            className={clsx(
+              "fixed z-50 inset-0 flex items-center justify-center p-4",
+              "overflow-y-auto"
+            )}
+          >
+            <div
+              className={clsx(
+                "w-full rounded-2xl shadow-xl border border-black-200 dark:border-black-700",
+                "bg-white dark:bg-black-900 text-black-900 dark:text-black-100",
+                "relative flex flex-col",
+                sizeClasses[size],
+                className
+              )}
+            >
+              {/* Header */}
+              {(title || showClose) && (
+                <div className="flex items-center justify-between p-4 border-b border-black-200 dark:border-black-700">
+                  {title && (
+                    <h2 className="text-lg font-semibold text-black-800 dark:text-black-200">
+                      {title}
+                    </h2>
+                  )}
 
-      <div
-        style={backdropStyle}
-        onClick={(e) => {
-          if (e.target === e.currentTarget) onClose();
-        }}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="modal-title"
-        ref={modalRef}
-      >
-        <div style={modalStyle}>
-          <div style={headerStyle}>
-            <h3 id="modal-title" style={{ fontSize: '1.125rem', fontWeight: '600' }}>
-              {title}
-            </h3>
-            <button onClick={onClose} style={closeButtonStyle} aria-label="Close modal">
-              <X size={20} />
-            </button>
-          </div>
-          <div style={bodyStyle}>{children}</div>
-        </div>
-      </div>
-    </>
+                  {showClose && (
+                    <button
+                      onClick={onClose}
+                      className="text-black-400 hover:text-black-600 dark:hover:text-black-300 transition"
+                      aria-label="Close modal"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* Content */}
+              <div className="p-5 overflow-y-auto max-h-[85vh]">{children}</div>
+            </div>
+          </motion.div>
+        </>
+      )}
+    </AnimatePresence>
   );
-}
+};

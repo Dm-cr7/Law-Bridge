@@ -1,286 +1,228 @@
-// src/pages/Tasks.jsx
+/**
+ * Tasks.jsx
+ * -----------------------------------------------------------
+ * Central Task Management Page
+ * Integrates:
+ *  - TaskList (per case or general)
+ *  - TaskFormModal (create/edit)
+ *  - ClientTaskList (tasks filtered by client)
+ *  - ClientTaskBoard (kanban-style grouped tasks)
+ *
+ * Notes:
+ *  - API base is pre-configured, no /api prefix.
+ *  - Prevents redundant fetches (avoids 429 Too Many Requests).
+ *  - Connects socket once safely.
+ * -----------------------------------------------------------
+ */
 
-import React, { useEffect, useState } from "react";
-import { useForm } from "react-hook-form";
-import API from "../api/axios";
-import { Plus, X, Edit2, Trash2 } from "lucide-react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
+import { motion } from "framer-motion";
+import { ClipboardList, Users, LayoutGrid, PlusCircle } from "lucide-react";
+import { toast } from "sonner";
+import api from "@/utils/api";
+import { socket, connectSocketWithToken } from "@/utils/socket";
+
+// Components
+import TaskList from "@/components/TaskList";
+import TaskFormModal from "@/components/TaskFormModal";
+import ClientTaskList from "@/components/ClientTaskList";
+import ClientTaskBoard from "@/components/ClientTaskBoard";
 
 export default function Tasks() {
-  const [tasks, setTasks] = useState([]);
+  const [activeTab, setActiveTab] = useState("myTasks");
+  const [modalOpen, setModalOpen] = useState(false);
+  const [clients, setClients] = useState([]);
+  const [selectedClient, setSelectedClient] = useState("");
+  const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [showModal, setShowModal] = useState(false);
-  const [editingTask, setEditingTask] = useState(null);
 
-  const {
-    register,
-    handleSubmit,
-    reset,
-    setValue,
-    formState: { errors, isSubmitting },
-  } = useForm();
+  const hasFetched = useRef(false); // ✅ prevents repeated API calls
 
-  useEffect(() => {
-    fetchTasks();
-  }, []);
+  /* ==========================================================
+     🧠 Fetch Logged-in User + Clients
+  ========================================================== */
+  const fetchUserAndClients = useCallback(async () => {
+    if (hasFetched.current) return; // ✅ avoid duplicate requests
+    hasFetched.current = true;
 
-  const fetchTasks = async () => {
-    setLoading(true);
     try {
-      const res = await API.get("/api/tasks");
-      if (Array.isArray(res.data)) {
-        setTasks(res.data);
-        setError(null);
-      } else {
-        throw new Error("Invalid data format");
-      }
+      setLoading(true);
+      const [userRes, clientRes] = await Promise.all([
+        api.get("/auth/me"),
+        api.get("/clients"),
+      ]);
+
+      const userData =
+        userRes?.data?.user ?? userRes?.data ?? userRes?.data?.data ?? null;
+      const clientData = clientRes?.data?.data ?? clientRes?.data ?? [];
+
+      setUser(userData);
+      setClients(clientData);
     } catch (err) {
-      console.error("❌ Failed to fetch tasks:", err);
-      setError("Unable to load tasks.");
+      console.error("❌ Error fetching user/clients:", err);
+      toast.error("Failed to load user or client data");
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const handleSave = async (data) => {
-    const url = editingTask ? `/api/tasks/${editingTask._id}` : "/api/tasks";
-    const method = editingTask ? "put" : "post";
+  useEffect(() => {
+    fetchUserAndClients();
+  }, [fetchUserAndClients]);
 
-    try {
-      const res = await API[method](url, {
-        title: data.title,
-        dueDate: data.dueDate || null,
-        status: data.completed ? "Done" : "Pending",
-      });
+  /* ==========================================================
+     🔌 Initialize Socket.IO (connect once)
+  ========================================================== */
+  useEffect(() => {
+    const token =
+      localStorage.getItem("authToken") ||
+      sessionStorage.getItem("authToken");
+    if (!token) return;
 
-      const updated = res.data;
-      if (!updated._id && editingTask?._id) updated._id = editingTask._id;
+    connectSocketWithToken(token);
 
-      setTasks((prev) =>
-        editingTask
-          ? prev.map((t) => (t._id === updated._id ? updated : t))
-          : [updated, ...prev]
+    const onNew = (task) => toast.success(`🆕 New Task: ${task.title}`);
+    const onUpdate = (task) => toast(`✏️ Task Updated: ${task.title}`);
+    const onDeleted = (payload) =>
+      toast.warning(
+        `🗑️ Task Removed: ${payload?.title ?? "a deleted task"}`
       );
 
-      closeModal();
-    } catch (err) {
-      console.error("❌ Error saving task:", err);
-      alert("Error saving task.");
-    }
-  };
+    socket.on("task:new", onNew);
+    socket.on("task:update", onUpdate);
+    socket.on("task:deleted", onDeleted);
 
-  const handleDelete = async (id) => {
-    if (!window.confirm("Delete this task?")) return;
-    try {
-      await API.delete(`/api/tasks/${id}`);
-      setTasks((prev) => prev.filter((t) => t._id !== id));
-    } catch (err) {
-      console.error("❌ Error deleting task:", err);
-      alert("Failed to delete task.");
-    }
-  };
+    return () => {
+      socket.off("task:new", onNew);
+      socket.off("task:update", onUpdate);
+      socket.off("task:deleted", onDeleted);
+    };
+  }, []); // ✅ only once, not tied to `user`
 
-  const openEdit = (task) => {
-    setEditingTask(task);
-    setValue("title", task.title);
-    setValue("dueDate", task.dueDate ? task.dueDate.substring(0, 10) : "");
-    setValue("completed", task.status === "Done");
-    setShowModal(true);
-  };
+  /* ==========================================================
+     🧭 Tabs Configuration
+  ========================================================== */
+  const tabs = [
+    { id: "myTasks", label: "My Tasks", icon: <ClipboardList size={16} /> },
+    { id: "clientTasks", label: "Client Tasks", icon: <Users size={16} /> },
+    { id: "board", label: "Task Board", icon: <LayoutGrid size={16} /> },
+  ];
 
-  const openNew = () => {
-    reset();
-    setEditingTask(null);
-    setShowModal(true);
-  };
-
-  const closeModal = () => {
-    setShowModal(false);
-    reset();
-    setEditingTask(null);
-  };
-
+  /* ==========================================================
+     🖼️ Render
+  ========================================================== */
   return (
-    <div style={{ maxWidth: 900, margin: "2rem auto", padding: "0 1rem", fontFamily: "Inter, sans-serif" }}>
-      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+    <div className="p-6">
+      {/* Header */}
+      <div className="flex justify-between items-center mb-6">
         <div>
-          <h1 style={{ margin: 0, fontSize: "2rem" }}>Tasks</h1>
-          <p style={{ margin: "0.25rem 0 0", color: "#555" }}>Manage your to-dos and deadlines.</p>
+          <h1 className="text-2xl font-semibold text-gray-900">
+            Task Management
+          </h1>
+          <p className="text-gray-600 text-sm">
+            Track, assign, and complete legal tasks efficiently.
+          </p>
         </div>
-        <button onClick={openNew} style={btnPrimary}>
-          <Plus size={16} /> New Task
+        <button
+          onClick={() => setModalOpen(true)}
+          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition"
+        >
+          <PlusCircle size={16} />
+          New Task
         </button>
-      </header>
+      </div>
 
-      <section style={{ marginTop: "2rem" }}>
-        {loading ? (
-          <p style={statusText}>Loading…</p>
-        ) : error ? (
-          <p style={{ ...statusText, color: "#b91c1c" }}>{error}</p>
-        ) : tasks.length === 0 ? (
-          <p style={statusText}>No tasks yet. Create one!</p>
-        ) : (
-          <ul style={taskList}>
-            {tasks.map((t) => (
-              <li key={t._id} style={taskCard}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ ...badge, ...(t.status === "Done" ? badgeDone : badgePending) }}>
-                    {t.status}
-                  </span>
-                  <div>
-                    <button onClick={() => openEdit(t)} title="Edit" style={iconBtn}>
-                      <Edit2 size={14} />
-                    </button>
-                    <button onClick={() => handleDelete(t._id)} title="Delete" style={iconBtn}>
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                </div>
-                <h3 style={{ margin: "0.75rem 0 0.5rem", fontSize: "1.1rem" }}>{t.title}</h3>
-                <p style={{ margin: 0, fontSize: "0.875rem", color: "#555" }}>
-                  Due: {t.dueDate ? new Date(t.dueDate).toLocaleDateString() : "—"}
-                </p>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      {/* Tabs */}
+      <div className="flex space-x-2 mb-6 border-b border-gray-200">
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-t-md transition-all ${
+              activeTab === tab.id
+                ? "bg-blue-100 text-blue-700 border-b-2 border-blue-600"
+                : "text-gray-600 hover:bg-gray-100"
+            }`}
+          >
+            {tab.icon}
+            {tab.label}
+          </button>
+        ))}
+      </div>
 
-      {showModal && (
-        <div style={modalBackdrop}>
-          <div style={modalBox}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <h2>{editingTask ? "Edit Task" : "New Task"}</h2>
-              <button onClick={closeModal} style={iconBtn}>
-                <X size={18} />
-              </button>
-            </div>
-            <form onSubmit={handleSubmit(handleSave)} style={{ display: "flex", flexDirection: "column", gap: "1rem", marginTop: "1rem" }}>
-              <label>
-                Title
-                <input
-                  type="text"
-                  {...register("title", { required: true })}
-                  style={input}
-                />
-                {errors.title && <span style={fieldError}>Required</span>}
-              </label>
-              <label>
-                Due Date
-                <input type="date" {...register("dueDate")} style={input} />
-              </label>
-              <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.9rem" }}>
-                <input type="checkbox" {...register("completed")} />
-                Completed
-              </label>
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}>
-                <button type="button" onClick={closeModal} style={btnSecondary}>Cancel</button>
-                <button type="submit" disabled={isSubmitting} style={btnPrimary}>
-                  {editingTask ? "Update" : "Save"}
-                </button>
-              </div>
-            </form>
+      {/* Content Area */}
+      <motion.div
+        key={activeTab}
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.25 }}
+        className="bg-white rounded-xl p-4 shadow-sm border"
+      >
+        {/* MY TASKS */}
+        {activeTab === "myTasks" && (
+          <div>
+            <TaskList />
           </div>
-        </div>
-      )}
+        )}
+
+        {/* CLIENT TASKS */}
+        {activeTab === "clientTasks" && (
+          <div>
+            <div className="mb-4 flex items-center gap-2">
+              <label className="text-sm font-medium text-gray-700">
+                Select Client:
+              </label>
+              <select
+                value={selectedClient}
+                onChange={(e) => setSelectedClient(e.target.value)}
+                className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="">Choose...</option>
+                {clients.map((c) => (
+                  <option key={c._id} value={c._id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {selectedClient ? (
+              <>
+                <ClientTaskList clientId={selectedClient} />
+                <div className="mt-6">
+                  <ClientTaskBoard clientId={selectedClient} />
+                </div>
+              </>
+            ) : (
+              <p className="text-gray-500 text-sm italic mt-4">
+                Select a client to view their tasks.
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* TASK BOARD */}
+        {activeTab === "board" && (
+          <div>
+            {!user && !loading ? (
+              <p className="text-gray-500">
+                Cannot show board until user is loaded.
+              </p>
+            ) : (
+              <ClientTaskBoard clientId={user?._id || ""} />
+            )}
+          </div>
+        )}
+      </motion.div>
+
+      {/* Task Modal */}
+      <TaskFormModal
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+        onSuccess={() => {
+          toast.success("✅ Task saved successfully");
+        }}
+      />
     </div>
   );
 }
-
-const input = {
-  marginTop: "0.25rem",
-  padding: "0.5rem",
-  border: "1px solid #ccc",
-  borderRadius: "6px",
-  fontSize: "1rem",
-};
-
-const fieldError = {
-  color: "#b91c1c",
-  fontSize: "0.8rem",
-  marginTop: "0.25rem",
-};
-
-const btnPrimary = {
-  background: "#2563eb",
-  color: "#fff",
-  padding: "0.6rem 1rem",
-  borderRadius: "6px",
-  border: "none",
-  cursor: "pointer",
-  fontWeight: 600,
-};
-
-const btnSecondary = {
-  background: "#f3f4f6",
-  color: "#333",
-  padding: "0.6rem 1rem",
-  borderRadius: "6px",
-  border: "none",
-  cursor: "pointer",
-  fontWeight: 600,
-};
-
-const iconBtn = {
-  background: "transparent",
-  border: "none",
-  cursor: "pointer",
-  padding: "0.25rem",
-  color: "#555",
-};
-
-const statusText = {
-  textAlign: "center",
-  color: "#666",
-};
-
-const taskList = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
-  gap: "1.5rem",
-  listStyle: "none",
-  padding: 0,
-  margin: 0,
-};
-
-const taskCard = {
-  background: "#fff",
-  borderRadius: "8px",
-  padding: "1rem",
-  boxShadow: "0 2px 4px rgba(0,0,0,0.05)",
-};
-
-const badge = {
-  padding: "0.25rem 0.5rem",
-  borderRadius: "9999px",
-  fontSize: "0.75rem",
-  fontWeight: 600,
-};
-
-const badgeDone = {
-  background: "#dcfce7",
-  color: "#166534",
-};
-
-const badgePending = {
-  background: "#fef3c7",
-  color: "#92400e",
-};
-
-const modalBackdrop = {
-  position: "fixed",
-  inset: 0,
-  background: "rgba(0,0,0,0.6)",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  zIndex: 999,
-};
-
-const modalBox = {
-  background: "#fff",
-  borderRadius: "10px",
-  padding: "2rem",
-  width: "100%",
-  maxWidth: "400px",
-};

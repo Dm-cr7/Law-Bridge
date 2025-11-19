@@ -1,355 +1,410 @@
-import React, { useEffect, useState } from "react";
+// frontend/src/pages/Clients.jsx
+import React, { useEffect, useState, useCallback } from "react";
 import { useForm } from "react-hook-form";
-import API from "../api/axios";
-import { Plus, X, Pencil, Trash2 } from "lucide-react";
+import {
+  Plus,
+  X,
+  Pencil,
+  Trash2,
+  UserPlus2,
+  Mail,
+  Users,
+  CheckSquare,
+  Square,
+  Loader2,
+} from "lucide-react";
 import { toast } from "sonner";
+import API from "@/utils/api"; // shared axios instance used across the app
+import { useAuth } from "@/context/AuthContext";
 
-// --- UI Components ---
+/* ===========================================================
+   Small reusable UI pieces (Button, Modal, FormField)
+   =========================================================== */
 
-const Button = ({ children, variant = 'primary', className = '', ...props }) => {
+const Button = ({ children, variant = "primary", className = "", ...props }) => {
   const styles = {
-    primary: "btn-primary",
-    secondary: "btn-secondary",
-    danger: "btn-danger",
+    primary: "bg-blue-600 hover:bg-blue-700 text-white",
+    secondary: "bg-gray-100 hover:bg-gray-200 text-black",
+    danger: "bg-red-600 hover:bg-red-700 text-white",
   };
   return (
-    <button className={`btn ${styles[variant]} ${className}`} {...props}>
+    <button
+      {...props}
+      className={`px-4 py-2 rounded-md text-sm font-medium transition ${styles[variant] || styles.primary} ${className}`}
+    >
       {children}
     </button>
   );
 };
 
-const Card = ({ children, className = "" }) => (
-  <div className={`card ${className}`}>{children}</div>
-);
-
 const Modal = ({ isOpen, onClose, title, children }) => {
   if (!isOpen) return null;
   return (
-    <div className="modal-overlay">
-      <div className="modal">
-        <div className="modal-header">
-          <h3>{title}</h3>
-          <button onClick={onClose} className="close-button">
-            <X size={20} />
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-lg w-full max-w-lg overflow-hidden">
+        <div className="flex items-center justify-between px-6 py-4 border-b">
+          <h3 className="text-lg font-semibold">{title}</h3>
+          <button onClick={onClose} className="p-2 rounded hover:bg-gray-100">
+            <X size={18} />
           </button>
         </div>
-        <div className="modal-body">{children}</div>
+        <div className="p-6">{children}</div>
       </div>
     </div>
   );
 };
 
-// --- Modals ---
+const FormField = ({ label, name, register, type = "text", error, required = false, defaultValue }) => (
+  <div>
+    <label className="block text-sm font-medium mb-1">
+      {label}
+      {required && <span className="text-red-500 ml-1">*</span>}
+    </label>
+    <input
+      {...(register ? register(name) : {})}
+      name={name}
+      type={type}
+      defaultValue={defaultValue}
+      className="w-full p-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+    />
+    {error && <p className="text-xs text-red-600 mt-1">{error.message || error}</p>}
+  </div>
+);
 
+/* ===========================================================
+   Helper: Normalize API response into an array
+   - Accepts many shapes: [] | { data: [] } | { items: [] } | { clients: [] } | { client: {...} } | single object
+   =========================================================== */
+function normalizeToArray(res) {
+  if (!res) return [];
+  const payload = res?.data ?? res;
+
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload?.items)) return payload.items;
+  if (Array.isArray(payload?.clients)) return payload.clients;
+
+  // If single client object returned
+  if (payload?.client && typeof payload.client === "object") return [payload.client];
+
+  // If payload looks like a client object
+  if (payload && typeof payload === "object") {
+    const likelyClientKeys = ["_id", "email", "name", "firstName", "lastName"];
+    if (likelyClientKeys.some((k) => Object.prototype.hasOwnProperty.call(payload, k))) {
+      return [payload];
+    }
+  }
+
+  return [];
+}
+
+/* ===========================================================
+   New Client Modal
+   - posts to POST /api/clients
+   - calls onCreated(client) with normalized client object
+   =========================================================== */
 const NewClientModal = ({ isOpen, onClose, onCreated }) => {
-  const { register, handleSubmit, reset, formState: { isSubmitting, errors } } = useForm();
+  const { register, handleSubmit, reset, formState } = useForm();
+  const { isSubmitting } = formState;
+
+  useEffect(() => {
+    if (!isOpen) reset();
+  }, [isOpen, reset]);
 
   const onSubmit = async (data) => {
     try {
-      const res = await API.post('/api/clients', data);
-      onCreated(res.data);
-      toast.success("✅ Client created");
+      const res = await API.post("/clients", data);
+      const created = (res?.data?.client) ? res.data.client : (res?.data ?? res);
+      const clients = normalizeToArray(created);
+      const client = clients[0] || created;
+      toast.success(`Client ${client?.name || "(unnamed)"} created`);
+      onCreated(client);
       reset();
       onClose();
-    } catch {
-      toast.error("❌ Failed to create client");
+    } catch (err) {
+      console.error("Create client failed:", err);
+      toast.error(err?.response?.data?.message || "Failed to create client");
     }
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="New Client">
-      <form onSubmit={handleSubmit(onSubmit)} className="form">
-        <label>
-          Name
-          <input {...register("name", { required: true })} />
-          {errors.name && <p className="error">Name is required</p>}
-        </label>
-        <label>
-          Email
-          <input {...register("email", { required: true })} />
-          {errors.email && <p className="error">Email is required</p>}
-        </label>
-        <label>
-          Phone
-          <input {...register("phone")} />
-        </label>
-        <div className="form-actions">
-          <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button type="submit" disabled={isSubmitting}>
-            {isSubmitting ? "Creating..." : "Create"}
-          </Button>
+    <Modal isOpen={isOpen} onClose={onClose} title="Create New Client">
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        <FormField label="Full name" name="name" register={register} required />
+        <FormField label="Email" name="email" register={register} type="email" />
+        <FormField label="Phone" name="phone" register={register} />
+        <div className="flex justify-end gap-2 mt-4">
+          <Button variant="secondary" onClick={onClose} type="button">Cancel</Button>
+          <Button type="submit" disabled={isSubmitting}>{isSubmitting ? "Creating..." : "Create Client"}</Button>
         </div>
       </form>
     </Modal>
   );
 };
 
+/* ===========================================================
+   Edit Client Modal
+   - PUT /api/clients/:id
+   - calls onUpdated(updatedClient)
+   =========================================================== */
 const EditClientModal = ({ isOpen, onClose, client, onUpdated }) => {
-  const { register, handleSubmit, reset, formState: { isSubmitting, errors } } = useForm({ defaultValues: client });
+  const { register, handleSubmit, reset, formState } = useForm({ defaultValues: client || {} });
+  const { isSubmitting } = formState;
 
   useEffect(() => {
     if (client) reset(client);
-  }, [client]);
+  }, [client, reset]);
+
+  if (!client) return null;
 
   const onSubmit = async (data) => {
     try {
-      const res = await API.put(`/api/clients/${client._id}`, data);
-      onUpdated(res.data);
-      toast.success("✅ Client updated");
+      const res = await API.put(`/clients/${client._id}`, data);
+      const updated = res?.data ?? res;
+      onUpdated(updated);
+      toast.success("Client updated");
       onClose();
-    } catch {
-      toast.error("❌ Failed to update client");
+    } catch (err) {
+      console.error("Update client error:", err);
+      toast.error(err?.response?.data?.message || "Failed to update client");
     }
   };
 
   return (
-    <Modal isOpen={isOpen && !!client} onClose={onClose} title="Edit Client">
-      <form onSubmit={handleSubmit(onSubmit)} className="form">
-        <label>
-          Name
-          <input {...register("name", { required: true })} />
-          {errors.name && <p className="error">Name is required</p>}
-        </label>
-        <label>
-          Email
-          <input {...register("email", { required: true })} />
-          {errors.email && <p className="error">Email is required</p>}
-        </label>
-        <label>
-          Phone
-          <input {...register("phone")} />
-        </label>
-        <div className="form-actions">
-          <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button type="submit" disabled={isSubmitting}>
-            {isSubmitting ? "Saving..." : "Save Changes"}
-          </Button>
+    <Modal isOpen={isOpen} onClose={onClose} title="Edit Client">
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        <FormField label="Full name" name="name" register={register} />
+        <FormField label="Email" name="email" register={register} type="email" />
+        <FormField label="Phone" name="phone" register={register} />
+        <div className="flex justify-end gap-2 mt-4">
+          <Button variant="secondary" onClick={onClose} type="button">Cancel</Button>
+          <Button type="submit" disabled={isSubmitting}>{isSubmitting ? "Saving..." : "Save Changes"}</Button>
         </div>
       </form>
     </Modal>
   );
 };
 
+/* ===========================================================
+   Delete Client Modal
+   - DELETE /api/clients/:id (soft delete)
+   =========================================================== */
 const DeleteClientModal = ({ isOpen, onClose, client, onDeleted }) => {
+  if (!client) return null;
+
   const handleDelete = async () => {
     try {
-      await API.delete(`/api/clients/${client._id}`);
+      await API.delete(`/clients/${client._id}`);
+      toast.success("Client deleted");
       onDeleted(client._id);
-      toast.success("🗑️ Client deleted");
       onClose();
-    } catch {
-      toast.error("❌ Failed to delete client");
+    } catch (err) {
+      console.error("Delete client failed:", err);
+      toast.error(err?.response?.data?.message || "Failed to delete client");
     }
   };
 
   return (
-    <Modal isOpen={isOpen && !!client} onClose={onClose} title="Delete Client">
-      <div className="delete-confirm">
-        <p>
-          Are you sure you want to delete <strong>{client.name}</strong>? This action cannot be undone.
-        </p>
-        <div className="form-actions">
-          <Button variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button variant="danger" onClick={handleDelete}>Yes, Delete</Button>
-        </div>
+    <Modal isOpen={isOpen} onClose={onClose} title="Delete Client">
+      <p>Are you sure you want to delete <strong>{client.name}</strong>? This action is reversible by admins.</p>
+      <div className="flex justify-end gap-2 mt-4">
+        <Button variant="secondary" onClick={onClose}>Cancel</Button>
+        <Button variant="danger" onClick={handleDelete}>Delete</Button>
       </div>
     </Modal>
   );
 };
 
-// --- Main Page ---
+/* ===========================================================
+   Share Client Modal
+   - PATCH /api/clients/:id/share
+   =========================================================== */
+const ShareClientModal = ({ isOpen, onClose, client, onShared }) => {
+  const [users, setUsers] = useState([]);
+  const [selected, setSelected] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    let mounted = true;
+    setLoading(true);
+    API.get("/users")
+      .then((res) => {
+        const data = res?.data ?? [];
+        if (mounted) {
+          const others = data.filter((u) => u._id !== client?.createdBy?._id);
+          setUsers(others);
+          setSelected((client?.sharedWith || []).map((u) => (typeof u === "string" ? u : u._id)));
+        }
+      })
+      .catch((err) => {
+        console.error("Load users for sharing failed:", err);
+        toast.error("Failed to load users");
+      })
+      .finally(() => mounted && setLoading(false));
+    return () => (mounted = false);
+  }, [isOpen, client]);
+
+  const toggle = (id) => setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+
+  const saveShare = async () => {
+    try {
+      setSaving(true);
+      const res = await API.patch(`/clients/${client._id}/share`, { userIds: selected });
+      toast.success("Client shared");
+      onShared(res.data);
+      onClose();
+    } catch (err) {
+      console.error("Share failed:", err);
+      toast.error(err?.response?.data?.message || "Failed to share client");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title={`Share "${client?.name}"`}>
+      {loading ? (
+        <div className="flex justify-center py-6"><Loader2 className="animate-spin" /></div>
+      ) : users.length === 0 ? (
+        <p>No other users available to share with.</p>
+      ) : (
+        <div className="max-h-64 overflow-auto divide-y">
+          {users.map((u) => {
+            const id = u._id;
+            const isSel = selected.includes(id);
+            return (
+              <div key={id} className="flex items-center justify-between p-3">
+                <div>
+                  <div className="font-medium">{u.name}</div>
+                  <div className="text-xs text-gray-500">{u.role} • {u.email}</div>
+                </div>
+                <button onClick={() => toggle(id)} className="p-2">
+                  {isSel ? <CheckSquare className="text-blue-600" /> : <Square />}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <div className="flex justify-end gap-2 mt-4">
+        <Button variant="secondary" onClick={onClose}>Cancel</Button>
+        <Button onClick={saveShare} disabled={saving}>{saving ? "Saving..." : "Share"}</Button>
+      </div>
+    </Modal>
+  );
+};
+
+/* ===========================================================
+   Main Clients Page Component
+   =========================================================== */
 export default function Clients() {
-  const [clients, setClients] = useState([]);
+  const { user } = useAuth();
+  const [clients, setClients] = useState([]); // always array
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
   const [showNewModal, setShowNewModal] = useState(false);
   const [editingClient, setEditingClient] = useState(null);
   const [deletingClient, setDeletingClient] = useState(null);
+  const [sharingClient, setSharingClient] = useState(null);
 
-  useEffect(() => {
-    const fetchClients = async () => {
-      try {
-        const res = await API.get("/api/clients");
-        setClients(res.data);
-      } catch (err) {
-        toast.error("❌ Failed to load clients");
-        setError(err.message);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchClients();
+  const loadClients = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await API.get("/clients");
+      const arr = normalizeToArray(res);
+      setClients(arr);
+    } catch (err) {
+      console.error("Load clients error:", err);
+      setError(err?.response?.data?.message || "Failed to load clients");
+      toast.error(err?.response?.data?.message || "Failed to load clients");
+      setClients([]);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  const handleClientCreated = (client) => setClients(prev => [client, ...prev]);
-  const handleClientUpdated = (updated) => setClients(prev => prev.map(c => c._id === updated._id ? updated : c));
-  const handleClientDeleted = (deletedId) => setClients(prev => prev.filter(c => c._id !== deletedId));
+  useEffect(() => {
+    loadClients();
+  }, [loadClients]);
+
+  const handleClientCreated = (client) => setClients((prev) => [client, ...prev]);
+  const handleClientUpdated = (updated) => setClients((prev) => prev.map((c) => (c._id === updated._id ? updated : c)));
+  const handleClientDeleted = (id) => setClients((prev) => prev.filter((c) => c._id !== id));
 
   return (
-    <div className="page">
-      <NewClientModal isOpen={showNewModal} onClose={() => setShowNewModal(false)} onCreated={handleClientCreated} />
-      {editingClient && (
-        <EditClientModal isOpen={true} onClose={() => setEditingClient(null)} client={editingClient} onUpdated={handleClientUpdated} />
-      )}
-      {deletingClient && (
-        <DeleteClientModal isOpen={true} onClose={() => setDeletingClient(null)} client={deletingClient} onDeleted={handleClientDeleted} />
-      )}
-
-      <div className="page-header">
+    <div className="p-6 min-h-screen bg-slate-50">
+      <div className="flex items-start justify-between mb-6">
         <div>
-          <h1>Client Management</h1>
-          <p className="subtext">View and manage your firm's clients.</p>
+          <h1 className="text-2xl font-bold">Client Management</h1>
+          <p className="text-sm text-gray-600">Manage clients, linked accounts and sharing.</p>
         </div>
-        <Button onClick={() => setShowNewModal(true)}>
-          <Plus size={16} style={{ marginRight: "4px" }} />
-          New Client
-        </Button>
+
+        <div className="flex items-center gap-3">
+          <Button onClick={() => setShowNewModal(true)} className="inline-flex items-center gap-2">
+            <Plus size={14} /> New Client
+          </Button>
+          <Button variant="secondary" onClick={loadClients}>Refresh</Button>
+        </div>
       </div>
 
-      <Card>
-        <table className="table">
-          <thead>
+      <div className="bg-white rounded-xl shadow border overflow-hidden">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-100 text-left">
             <tr>
-              <th>Name</th><th>Email</th><th>Phone</th><th className="text-right">Actions</th>
+              <th className="py-3 px-4 font-medium">Name</th>
+              <th className="py-3 px-4 font-medium">Email</th>
+              <th className="py-3 px-4 font-medium">Phone</th>
+              <th className="py-3 px-4 font-medium">Intaked By</th>
+              <th className="py-3 px-4 text-right font-medium">Actions</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan="4" className="center">Loading...</td></tr>
+              <tr>
+                <td colSpan={5} className="text-center py-8 text-gray-500">Loading...</td>
+              </tr>
             ) : error ? (
-              <tr><td colSpan="4" className="center error">{error}</td></tr>
+              <tr>
+                <td colSpan={5} className="text-center py-8 text-red-500">{error}</td>
+              </tr>
             ) : clients.length === 0 ? (
-              <tr><td colSpan="4" className="center muted">No clients found.</td></tr>
+              <tr>
+                <td colSpan={5} className="text-center py-8 text-gray-500">No clients found</td>
+              </tr>
             ) : (
-              clients.map(client => (
-                <tr key={client._id}>
-                  <td>{client.name}</td>
-                  <td className="muted">{client.email}</td>
-                  <td className="muted">{client.phone}</td>
-                  <td className="text-right">
-                    <button onClick={() => setEditingClient(client)} className="link edit">
-                      <Pencil size={14} /> Edit
-                    </button>
-                    <button onClick={() => setDeletingClient(client)} className="link delete">
-                      <Trash2 size={14} /> Delete
-                    </button>
-                  </td>
-                </tr>
-              ))
+              clients.map((client) => {
+                const createdBy = client?.createdBy ? (typeof client.createdBy === "string" ? client.createdBy : (client.createdBy.name || client.createdBy.email)) : "-";
+                return (
+                  <tr key={client._id} className="border-t hover:bg-gray-50">
+                    <td className="py-3 px-4">{client.name || `${client.firstName || ""} ${client.lastName || ""}`.trim() || "(Unnamed)"}</td>
+                    <td className="py-3 px-4 flex items-center gap-2 text-gray-700"><Mail size={14} /> {client.email || "-"}</td>
+                    <td className="py-3 px-4 text-gray-700">{client.phone || client.primaryPhone || "-"}</td>
+                    <td className="py-3 px-4 text-gray-600">{createdBy}</td>
+                    <td className="py-3 px-4 text-right space-x-3">
+                      <button onClick={() => setSharingClient(client)} className="text-green-600 hover:underline inline-flex items-center gap-1"><Users size={14} /> Share</button>
+                      <button onClick={() => setEditingClient(client)} className="text-blue-600 hover:underline inline-flex items-center gap-1"><Pencil size={14} /> Edit</button>
+                      <button onClick={() => setDeletingClient(client)} className="text-red-600 hover:underline inline-flex items-center gap-1"><Trash2 size={14} /> Delete</button>
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>
-      </Card>
+      </div>
 
-      {/* Scoped styles below */}
-      <style>{`
-        .page { padding: 24px; background: #f9fafe; min-height: 100vh; font-family: 'Inter', sans-serif; color: #111; }
-        .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 12px; }
-        .subtext { color: #666; margin-top: 4px; font-size: 14px; }
-
-        .btn {
-          padding: 8px 16px;
-          border-radius: 6px;
-          font-size: 14px;
-          font-weight: 500;
-          border: none;
-          cursor: pointer;
-          display: inline-flex;
-          align-items: center;
-          transition: background 0.2s;
-        }
-        .btn-primary { background: #2563eb; color: white; }
-        .btn-primary:hover { background: #1e4ed8; }
-        .btn-secondary { background: #f0f0f0; color: #333; }
-        .btn-danger { background: #dc2626; color: white; }
-        .btn-danger:hover { background: #b91c1c; }
-
-        .card {
-          background: white;
-          border-radius: 8px;
-          box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-          overflow: hidden;
-        }
-
-        .table {
-          width: 100%;
-          border-collapse: collapse;
-        }
-        .table th, .table td {
-          padding: 12px 16px;
-          border-bottom: 1px solid #e5e7eb;
-          font-size: 14px;
-        }
-        .table th {
-          text-align: left;
-          background: #f3f4f6;
-          font-weight: 600;
-        }
-
-        .modal-overlay {
-          position: fixed;
-          inset: 0;
-          background: rgba(0,0,0,0.5);
-          display: flex;
-          justify-content: center;
-          align-items: center;
-          z-index: 1000;
-        }
-        .modal {
-          background: white;
-          border-radius: 8px;
-          padding: 24px;
-          width: 100%;
-          max-width: 400px;
-        }
-        .modal-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          border-bottom: 1px solid #ddd;
-          padding-bottom: 8px;
-        }
-        .modal-body { padding-top: 16px; }
-        .close-button {
-          background: transparent;
-          border: none;
-          cursor: pointer;
-        }
-
-        .form { display: flex; flex-direction: column; gap: 16px; }
-        .form input {
-          padding: 8px;
-          border-radius: 4px;
-          border: 1px solid #ccc;
-          width: 100%;
-        }
-        .form label { font-size: 14px; font-weight: 500; color: #333; }
-        .form-actions {
-          display: flex;
-          justify-content: flex-end;
-          gap: 8px;
-        }
-
-        .center { text-align: center; padding: 16px; }
-        .error { color: #dc2626; }
-        .muted { color: #666; }
-
-        .link {
-          font-size: 13px;
-          display: inline-flex;
-          align-items: center;
-          gap: 4px;
-          background: none;
-          border: none;
-          cursor: pointer;
-          padding: 4px 8px;
-        }
-        .link.edit { color: #2563eb; }
-        .link.delete { color: #dc2626; }
-        .link:hover { text-decoration: underline; }
-      `}</style>
+      {/* Modals */}
+      <NewClientModal isOpen={showNewModal} onClose={() => setShowNewModal(false)} onCreated={handleClientCreated} />
+      {editingClient && <EditClientModal isOpen={!!editingClient} client={editingClient} onClose={() => setEditingClient(null)} onUpdated={handleClientUpdated} />}
+      {deletingClient && <DeleteClientModal isOpen={!!deletingClient} client={deletingClient} onClose={() => setDeletingClient(null)} onDeleted={handleClientDeleted} />}
+      {sharingClient && <ShareClientModal isOpen={!!sharingClient} client={sharingClient} onClose={() => setSharingClient(null)} onShared={(updated) => { handleClientUpdated(updated); setSharingClient(null); }} />}
     </div>
   );
 }

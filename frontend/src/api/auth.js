@@ -1,79 +1,44 @@
-// src/api/auth.js
+// frontend/src/api/auth.js
+import api from "../utils/api";
 
-const API = import.meta.env.VITE_API_URL; // Example: https://your-backend-url.com
-
-// Register a new user
+// === REGISTER ===
 export async function registerUser({ name, email, password, role }) {
   try {
-    const res = await fetch(`${API}/api/auth/register`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ name, email, password, role }),
-    });
-
-    const data = await res.json();
-
-    if (!res.ok) {
-      throw new Error(data.message || "Registration failed");
-    }
-
-    return { success: true, message: data.message };
+    const res = await api.post("/auth/register", { name, email, password, role });
+    return { success: true, data: res.data };
   } catch (err) {
-    console.error("Register error:", err.message);
-    return { success: false, message: err.message };
+    console.error("Register error:", err);
+    return { success: false, message: err.response?.data?.message || "Registration failed" };
   }
 }
 
-// Login a user and store token + role
+// === LOGIN ===
 export async function loginUser({ email, password }) {
   try {
-    const res = await fetch(`${API}/api/auth/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ email, password }),
-    });
-
-    const data = await res.json();
-
-    if (!res.ok) {
-      throw new Error(data.message || "Login failed");
-    }
-
-    const { token, user } = data;
+    const res = await api.post("/auth/login", { email, password });
+    const { token, user } = res.data;
 
     if (token) localStorage.setItem("token", token);
     if (user?.role) localStorage.setItem("role", user.role);
 
-    return { success: true, user };
+    return { success: true, data: user };
   } catch (err) {
-    console.error("Login error:", err.message);
-    return { success: false, message: err.message };
+    console.error("Login error:", err);
+    return { success: false, message: err.response?.data?.message || "Login failed" };
   }
 }
 
-// Get current user
+// === GET CURRENT USER ===
 export async function getCurrentUser() {
   try {
-    const res = await fetch(`${API}/api/auth/me`, {
-      method: "GET",
-      credentials: "include",
-    });
+    const res = await api.get("/auth/me");
+    const user = res.data;
 
-    const user = await res.json();
+    if (user?.role) localStorage.setItem("role", user.role);
 
-    if (!res.ok) {
-      throw new Error(user.message || "Failed to fetch user");
-    }
-
-    if (user.role) {
-      localStorage.setItem("role", user.role);
-    }
-
-    return user;
+    return { success: true, data: user };
   } catch (err) {
-    console.error("getCurrentUser error:", err.message);
-    return null;
+    console.error("GetCurrentUser error:", err);
+    return { success: false, message: err.response?.data?.message || "Failed to fetch user" };
   }
 }

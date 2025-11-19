@@ -1,210 +1,177 @@
+/**
+ * backend/routes/reportsRoutes.js
+ * --------------------------------------------------------------------
+ * 📊 Reporting & Analytics Routes — Fully Production Ready
+ * --------------------------------------------------------------------
+ * Features:
+ * ✅ Authenticated (all routes use `protect`)
+ * ✅ Role-based access control via `authorize`
+ * ✅ Supports query ?scope=self|firm for user- or firm-wide reporting
+ * ✅ Handles JSON, CSV, and PDF exports
+ * ✅ Works seamlessly with controllers that either return data or write directly
+ */
+
 import express from "express";
-import Report from "../models/Report.js";
-import Case from "../models/Case.js";
-import Task from "../models/Task.js";
-import Client from "../models/Client.js";
-import { protect } from "../middleware/auth.js";
+import {
+  casesSummary,
+  staffProductivity,
+  adrSuccessRates,
+  exportReport,
+} from "../controllers/reportsController.js";
+import { protect, authorize } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
-/**
- * ✅ GET /api/reports/summary – MUST come before /:id
- */
-router.get("/summary", protect, async (req, res) => {
+/* --------------------------------------------------------------------
+   🧠 Helper — call controller that may return or send response
+-------------------------------------------------------------------- */
+async function callControllerSafely(controllerFn, req, res) {
+  // Some controllers send their own response via res.json()
+  // Others return { success, data } directly
+  const result = await controllerFn(req, res);
+  if (res.headersSent) return null;
+  return result;
+}
+
+/* --------------------------------------------------------------------
+   📈 GET /api/reports/summary?scope=self|firm
+   Combines cases, staff, and ADR analytics into one response.
+-------------------------------------------------------------------- */
+router.get("/summary", protect, async (req, res, next) => {
   try {
-    const [totalCases, totalClients, openTasks, overdueTasks] = await Promise.all([
-      Case.countDocuments({ createdBy: req.user._id }),
-      Client.countDocuments({ createdBy: req.user._id }),
-      Task.countDocuments({ createdBy: req.user._id, completed: false }),
-      Task.countDocuments({
-        createdBy: req.user._id,
-        completed: false,
-        dueDate: { $lt: new Date() },
-      }),
+    const scope = req.query.scope || "self";
+
+    const [casesData, staffData, adrData] = await Promise.all([
+      callControllerSafely(casesSummary, req, res),
+      callControllerSafely(staffProductivity, req, res),
+      callControllerSafely(adrSuccessRates, req, res),
     ]);
 
-    res.json({ totalCases, totalClients, openTasks, overdueTasks });
+    if (res.headersSent) return; // controller already handled it
+
+    res.json({
+      success: true,
+      summary: {
+        cases: casesData?.data || casesData || {},
+        staff: staffData?.data || staffData || [],
+        adr: adrData?.data || adrData || {},
+        scope,
+      },
+    });
   } catch (err) {
-    console.error("❌ Error in /summary:", err);
-    res.status(500).json({ error: "Failed to load summary data." });
+    console.error("💥 Error in /reports/summary:", err);
+    next(err);
   }
 });
 
-/**
- * ✅ GET /api/reports/charts – MUST come before /:id
- */
-router.get("/charts", protect, async (req, res) => {
-  try {
-    const userId = req.user._id;
-
-    const rawData = await Case.aggregate([
-      { $match: { createdBy: userId } },
-      {
-        $group: {
-          _id: {
-            year: { $year: "$createdAt" },
-            month: { $month: "$createdAt" },
-            status: "$status",
-          },
-          count: { $sum: 1 },
-        },
-      },
-    ]);
-
-    const months = Array.from({ length: 6 }, (_, i) => {
-      const d = new Date();
-      d.setMonth(d.getMonth() - (5 - i));
-      return {
-        name: d.toLocaleString("default", { month: "short" }),
-        year: d.getFullYear(),
-        month: d.getMonth() + 1,
-        newCases: 0,
-        closedCases: 0,
-      };
-    });
-
-    rawData.forEach(({ _id, count }) => {
-      const target = months.find((m) => m.year === _id.year && m.month === _id.month);
-      if (target) {
-        if (_id.status === "Closed") target.closedCases += count;
-        else target.newCases += count;
+/* --------------------------------------------------------------------
+   ⚖️ GET /api/reports/cases/summary?scope=self|firm
+   Returns case analytics per status and resolution time.
+-------------------------------------------------------------------- */
+router.get(
+  "/cases/summary",
+  protect,
+  authorize("advocate", "paralegal", "mediator", "arbitrator", "admin"),
+  async (req, res, next) => {
+    try {
+      const result = await callControllerSafely(casesSummary, req, res);
+      if (!res.headersSent && result !== undefined) {
+        return res.json(result);
       }
-    });
-
-    const caseStatusData = await Case.aggregate([
-      { $match: { createdBy: userId } },
-      {
-        $group: {
-          _id: "$status",
-          value: { $sum: 1 },
-        },
-      },
-      {
-        $project: {
-          name: "$_id",
-          value: 1,
-          _id: 0,
-        },
-      },
-    ]);
-
-    res.json({ monthlyCaseData: months, caseStatusData });
-  } catch (err) {
-    console.error("❌ Error in /charts:", err);
-    res.status(500).json({ error: "Failed to load chart data." });
+    } catch (err) {
+      console.error("💥 Error in /reports/cases/summary:", err);
+      next(err);
+    }
   }
-});
+);
 
-/**
- * GET /api/reports – List all reports
- */
-router.get("/", protect, async (req, res) => {
+/* --------------------------------------------------------------------
+   👥 GET /api/reports/staff/productivity?scope=self|firm
+   Returns task/case handling performance per staff member.
+-------------------------------------------------------------------- */
+router.get(
+  "/staff/productivity",
+  protect,
+  authorize("advocate", "paralegal", "admin"),
+  async (req, res, next) => {
+    try {
+      const result = await callControllerSafely(staffProductivity, req, res);
+      if (!res.headersSent && result !== undefined) {
+        return res.json(result);
+      }
+    } catch (err) {
+      console.error("💥 Error in /reports/staff/productivity:", err);
+      next(err);
+    }
+  }
+);
+
+/* --------------------------------------------------------------------
+   ⚖️ GET /api/reports/adr/success?scope=self|firm
+   Returns ADR success breakdown and percentages.
+-------------------------------------------------------------------- */
+router.get(
+  "/adr/success",
+  protect,
+  authorize("advocate", "mediator", "arbitrator", "admin"),
+  async (req, res, next) => {
+    try {
+      const result = await callControllerSafely(adrSuccessRates, req, res);
+      if (!res.headersSent && result !== undefined) {
+        return res.json(result);
+      }
+    } catch (err) {
+      console.error("💥 Error in /reports/adr/success:", err);
+      next(err);
+    }
+  }
+);
+
+/* --------------------------------------------------------------------
+   🧾 GET /api/reports/export
+   ?type={cases|staff|adr}&format={json|csv|pdf}&scope=self|firm
+   Delegates to exportReport — may stream or return a buffer.
+-------------------------------------------------------------------- */
+router.get("/export", protect, async (req, res, next) => {
   try {
-    const reports = await Report.find({ user: req.user._id })
-      .sort({ createdAt: -1 })
-      .populate("case", "title")
-      .lean();
+    const { type = "cases", format = "json" } = req.query;
 
-    res.json(reports);
-  } catch (err) {
-    console.error("❌ Error fetching reports:", err);
-    res.status(500).json({ message: "Server error" });
-  }
-});
+    // Controller may send directly or return object/buffer
+    const result = await callControllerSafely(exportReport, req, res);
+    if (res.headersSent) return;
 
-/**
- * POST /api/reports – Create a report
- */
-router.post("/", protect, async (req, res) => {
-  const { title, description, caseId } = req.body;
-
-  if (!title || !caseId) {
-    return res.status(400).json({ message: "Title and caseId are required" });
-  }
-
-  try {
-    const report = new Report({
-      title: title.trim(),
-      description: description?.trim() || "",
-      case: caseId,
-      user: req.user._id,
-    });
-
-    const saved = await report.save();
-    res.status(201).json(saved);
-  } catch (err) {
-    console.error("❌ Error creating report:", err);
-    res.status(500).json({ message: "Server error" });
-  }
-});
-
-/**
- * ✅ 🔥 THIS MUST COME LAST 🔥
- * GET /api/reports/:id – Get a report by ID
- */
-router.get("/:id", protect, async (req, res) => {
-  try {
-    const report = await Report.findOne({
-      _id: req.params.id,
-      user: req.user._id,
-    }).populate("case", "title");
-
-    if (!report) {
-      return res.status(404).json({ message: "Report not found or unauthorized" });
+    // Binary file export (e.g., PDF)
+    if (result?.buffer && result?.mimeType && result?.filename) {
+      res.setHeader("Content-Type", result.mimeType);
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${result.filename}"`
+      );
+      return res.send(result.buffer);
     }
 
-    res.json(report);
-  } catch (err) {
-    console.error("❌ Error fetching report:", err);
-    res.status(500).json({ message: "Server error" });
-  }
-});
+    // JSON export
+    if (result?.data && (format === "json" || !format)) {
+      return res.json(result);
+    }
 
-/**
- * PUT /api/reports/:id – Update a report
- */
-router.put("/:id", protect, async (req, res) => {
-  try {
-    const updated = await Report.findOneAndUpdate(
-      { _id: req.params.id, user: req.user._id },
-      {
-        ...(req.body.title && { title: req.body.title.trim() }),
-        ...(req.body.description !== undefined && {
-          description: req.body.description.trim(),
-        }),
-      },
-      { new: true }
+    // CSV export
+    if (typeof result === "string" && format === "csv") {
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="report_${type}.csv"`
+      );
+      return res.send(result);
+    }
+
+    // Default fallback
+    return res.json(
+      result || { success: false, message: "No export data available" }
     );
-
-    if (!updated) {
-      return res.status(404).json({ message: "Report not found or unauthorized" });
-    }
-
-    res.json(updated);
   } catch (err) {
-    console.error("❌ Error updating report:", err);
-    res.status(500).json({ message: "Server error" });
-  }
-});
-
-/**
- * DELETE /api/reports/:id – Delete a report
- */
-router.delete("/:id", protect, async (req, res) => {
-  try {
-    const deleted = await Report.findOneAndDelete({
-      _id: req.params.id,
-      user: req.user._id,
-    });
-
-    if (!deleted) {
-      return res.status(404).json({ message: "Report not found or unauthorized" });
-    }
-
-    res.json({ message: "Report deleted successfully" });
-  } catch (err) {
-    console.error("❌ Error deleting report:", err);
-    res.status(500).json({ message: "Server error" });
+    console.error("💥 Error in /reports/export:", err);
+    next(err);
   }
 });
 

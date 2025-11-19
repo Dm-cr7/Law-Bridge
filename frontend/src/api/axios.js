@@ -1,45 +1,52 @@
-// src/api/axios.js
+// frontend/src/utils/api.js
 
 import axios from "axios";
 
-// Determine backend URL from environment variable
-const rawBaseURL = import.meta.env.VITE_API_URL || "http://localhost:5000";
-const baseURL = rawBaseURL.replace(/\/+$/, ""); // Remove trailing slashes if any
+// 🧭 Determine backend base URL from environment
+const rawBaseURL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+const baseURL = rawBaseURL.replace(/\/+$/, ""); // Remove trailing slashes
 
-// Create axios instance
-const API = axios.create({
-  baseURL, // e.g. https://your-backend.com
-  withCredentials: true, // Needed to send cookies in cross-origin requests
+// 🏗️ Create axios instance
+const api = axios.create({
+  baseURL, // Example: https://your-backend.com
+  withCredentials: true, // Allow cookies if backend uses them
   headers: {
     "Content-Type": "application/json",
     Accept: "application/json",
   },
 });
 
-// Request interceptor: Attach JWT token if available
-API.interceptors.request.use(
+// 🛠️ Request Interceptor — Attach JWT token automatically
+api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem("token");
-
     if (token && typeof token === "string") {
       config.headers.Authorization = `Bearer ${token}`;
     }
-
     return config;
   },
   (error) => Promise.reject(error)
 );
 
-// Optional: Response interceptor (e.g. auto-logout on 401)
-API.interceptors.response.use(
+// 🚨 Response Interceptor — Handle expired sessions / unauthorized
+api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
-      console.warn("Unauthorized: redirecting to login...");
-      // Optional: redirect or logout logic
+    const status = error.response?.status;
+
+    if (status === 401) {
+      console.warn("Unauthorized: clearing session and redirecting...");
+      localStorage.removeItem("token");
+      localStorage.removeItem("role");
+
+      // Optional: Redirect to login if using React Router
+      if (window.location.pathname !== "/login") {
+        window.location.href = "/login";
+      }
     }
+
     return Promise.reject(error);
   }
 );
 
-export default API;
+export default api;

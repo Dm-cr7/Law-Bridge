@@ -1,0 +1,15 @@
+{
+    "keep": {
+        "days": true,
+        "amount": 30
+    },
+    "auditLog": "D:\\back up main\\legal-justice-dashboard\\BACKEND\\logs\\.2350931a0e6372e70fcb43e0c1a6241f4d9abf2b-audit.json",
+    "files": [
+        {
+            "date": 1763281859216,
+            "name": "D:\\back up main\\legal-justice-dashboard\\BACKEND\\logs\\app-2025-11-16.log",
+            "hash": "825b0bf5df0fd194532d2a9c08406301b81bd17b47f16d5106833181922575bb"
+        }
+    ],
+    "hashType": "sha256"
+}

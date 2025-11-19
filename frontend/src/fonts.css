@@ -1,0 +1,55 @@
+/* frontend/src/fonts.css
+   Self-hosted Inter variable fonts (normal + italic)
+   Uses the variable TTF files placed under: /fonts/Inter/
+   - font-display: swap for good perceived performance
+   - font-weight: 100 900 to expose the full variable range
+   - Keep this file imported early in your main entry (src/main.jsx)
+*/
+
+/* Normal / roman variable font */
+@font-face {
+  font-family: "Inter";
+  src: url("/fonts/Inter/Inter-VariableFont_opsz,wght.ttf") format("truetype");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+  font-stretch: 75% 125%;
+  unicode-range: U+000-5FF; /* Basic Latin + Latin-1 Supplement (adjust if you add more subsets) */
+}
+
+/* Italic variable font */
+@font-face {
+  font-family: "Inter";
+  src: url("/fonts/Inter/Inter-Italic-VariableFont_opsz,wght.ttf") format("truetype");
+  font-weight: 100 900;
+  font-style: italic;
+  font-display: swap;
+  font-stretch: 75% 125%;
+  unicode-range: U+000-5FF;
+}
+
+/* Optional: define lightweight fallback faces if you want explicit named weights */
+/* Not required — browsers can use font-weight on the variable font */
+/* Example (commented) */
+/*
+@font-face {
+  font-family: "Inter";
+  src: url("/fonts/Inter/static/Inter_18pt-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+*/
+
+/* Set a sensible global fallback stack and CSS variable */
+:root {
+  --ui-font: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue",
+    Arial, "Noto Sans", "Liberation Sans", sans-serif;
+}
+
+/* Apply to body (optional — you may already set this in index.css) */
+body {
+  font-family: var(--ui-font);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: blackscale;
+}
