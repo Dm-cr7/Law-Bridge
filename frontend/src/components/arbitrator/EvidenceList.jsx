@@ -13,10 +13,10 @@
 
 import React, { useEffect, useState } from "react";
 import axios from "@/utils/axiosInstance";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
-import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/Input";
+import { Button } from "@/components/ui/Button.jsx";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card.jsx";
+import { Badge } from "@/components/ui/Badge.jsx";
+import { Input } from "@/components/ui/Input.jsx";
 import {
   Download,
   Trash2,
@@ -26,7 +26,7 @@ import {
   FileText,
   Loader2,
 } from "lucide-react";
-import { useToast } from "@/components/ui/use-toast";
+import { useToast } from "@/components/ui/use-toast.jsx";
 
 export default function EvidenceList({ arbitrationId, isArbitrator = false }) {
   const { toast } = useToast();

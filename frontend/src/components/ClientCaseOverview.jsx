@@ -10,7 +10,7 @@ import { socket } from "@/utils/socket";
  * Displays all cases associated with a given client.
  * - Fetches from backend: GET /clients/:id/cases
  * - Realtime updates: case:new, case:update, case:closed
- * - Shows status badges, deadlines, and linked advocates/paralegals
+ * - Shows status Badges, deadlines, and linked advocates/paralegals
  */
 
 export default function ClientCaseOverview({ clientId }) {

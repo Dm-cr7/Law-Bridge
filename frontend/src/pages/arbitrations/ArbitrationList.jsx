@@ -14,11 +14,11 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "@/utils/axiosInstance";
-import ArbitrationListItem from "@/pages/arbitrations/ArbitrationListItem";import { Input } from "@/components/ui/Input";
-import { Select, SelectTrigger, SelectContent, SelectItem } from "@/components/ui/Select";
-import { Button } from "@/components/ui/Button";
+import ArbitrationListItem from "@/pages/arbitrations/ArbitrationListItem";import { Input } from "@/components/ui/Input.jsx";
+import { Select, SelectTrigger, SelectContent, SelectItem } from "@/components/ui/Select.jsx";
+import { Button } from "@/components/ui/Button.jsx";
 import { Loader2, RefreshCcw, Filter } from "lucide-react";
-import { useToast } from "@/components/ui/use-toast";
+import { useToast } from "@/components/ui/use-toast.jsx";
 export default function ArbitrationList() {
   const [arbitrations, setArbitrations] = useState([]);
   const [filtered, setFiltered] = useState([]);

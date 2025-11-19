@@ -15,11 +15,11 @@
 
 import React, { useEffect, useState } from "react";
 import axios from "@/utils/axiosInstance";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card.jsx";
+import { Button } from "@/components/ui/Button.jsx";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { useToast } from "@/components/ui/use-toast";import {
+import { useToast } from "@/components/ui/use-toast.jsx";import {
   CheckCircle,
   XCircle,
   FileText,

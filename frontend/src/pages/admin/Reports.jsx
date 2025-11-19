@@ -1,17 +1,17 @@
 import React, { useState, useEffect } from "react";
 import { Download, RefreshCcw, FileText, BarChart3 } from "lucide-react";
-import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
+import { Button } from "@/components/ui/Button.jsx";
+import { Input } from "@/components/ui/Input.jsx";
 import {
   Select,
   SelectTrigger,
   SelectValue,
   SelectContent,
   SelectItem,
-} from "@/components/ui/Select";
-import StatCard from "@/components/ui/StatCard";
+} from "@/components/ui/Select.jsx";
+import StatCard from "@/components/ui/StatCard.jsx";
 import api from "@/utils/axiosInstance";
-import { toast } from "@/components/ui/use-toast";
+import { toast } from "@/components/ui/use-toast.jsx";
 
 export default function Reports() {
   const [filters, setFilters] = useState({

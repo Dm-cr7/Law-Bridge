@@ -25,8 +25,8 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
-} from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
+} from "@/components/ui/Card.jsx";
+import { Button } from "@/components/ui/Button.jsx";
 import { Loader2, FileText, FileDown, RefreshCcw } from "lucide-react";
 import { toast } from "react-hot-toast";
 

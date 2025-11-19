@@ -2,7 +2,7 @@
 import React from "react";
 import { motion } from "framer-motion";
 import { Mail, MapPin, Phone, Clock, ArrowRight, ExternalLink } from "lucide-react";
-import { Button } from "@/components/ui/Button";
+import { Button } from "@/components/ui/Button.jsx";
 import ResponsiveImage from "@/components/ResponsiveImage";
 
 /**

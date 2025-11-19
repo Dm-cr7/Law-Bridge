@@ -2,7 +2,7 @@
 import React from "react";
 import { motion } from "framer-motion";
 import { Scale, Users, Briefcase, Gavel, Handshake, Workflow } from "lucide-react";
-import { Button } from "@/components/ui/Button";
+import { Button } from "@/components/ui/Button.jsx";
 
 /**
  * 💼 Services.jsx

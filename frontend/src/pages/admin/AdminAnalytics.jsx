@@ -16,10 +16,10 @@
 
 import React, { useEffect, useState } from "react";
 import axios from "@/utils/axiosInstance";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card.jsx";
+import { Button } from "@/components/ui/Button.jsx";
 import { Download, RefreshCcw, BarChart2, Users, FileText, Scale } from "lucide-react";
-import { useToast } from "@/components/ui/use-toast";import { LineChart, Line, PieChart, Pie, Cell, Tooltip, ResponsiveContainer, XAxis, YAxis, Bar, BarChart, Legend } from "recharts";
+import { useToast } from "@/components/ui/use-toast.jsx";import { LineChart, Line, PieChart, Pie, Cell, Tooltip, ResponsiveContainer, XAxis, YAxis, Bar, BarChart, Legend } from "recharts";
 
 export default function AdminAnalytics() {
   const [loading, setLoading] = useState(false);

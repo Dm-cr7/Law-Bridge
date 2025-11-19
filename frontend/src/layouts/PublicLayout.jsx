@@ -1,7 +1,7 @@
 import { Outlet, Link, useLocation } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { useEffect } from "react";
-import { Button } from "@/components/ui/Button";
+import { Button } from "@/components/ui/Button.jsx";
 import { FaLinkedin, FaTwitter, FaGithub } from "react-icons/fa";
 import MobileNavBar from "@/components/public/MobileNavBar";
 

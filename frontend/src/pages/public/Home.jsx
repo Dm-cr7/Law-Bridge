@@ -2,7 +2,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Scale, Users, ShieldCheck, Briefcase } from "lucide-react";
-import { Button } from "@/components/ui/Button";
+import { Button } from "@/components/ui/Button.jsx";
 import { Link } from "react-router-dom";
 import ResponsiveImage from "@/components/ResponsiveImage";
 

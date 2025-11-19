@@ -3,7 +3,7 @@ import React from "react";
 import NavbarPublic from "@/components/public/NavbarPublic";
 import FooterPublic from "@/components/public/FooterPublic";
 import Hero3D from "@/components/public/Hero3D";
-import { Button } from "@/components/ui/Button";
+import { Button } from "@/components/ui/Button.jsx";
 import { motion } from "framer-motion";
 import { Users, Mail, Globe, LogIn } from "lucide-react";
 

@@ -15,14 +15,14 @@
 
 import React, { useState } from "react";
 import axios from "@/utils/axiosInstance";
-import { Button } from "@/components/ui/button";
-import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/Card";
-import { Input } from "@/components/ui/Input";
+import { Button } from "@/components/ui/Button.jsx";
+import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/Card.jsx";
+import { Input } from "@/components/ui/Input.jsx";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Upload, File, Loader2 } from "lucide-react";
-import { useToast } from "@/components/ui/use-toast";
+import { useToast } from "@/components/ui/use-toast.jsx";
 
 export default function UploadEvidenceForm({ arbitrationId, onUploadComplete }) {
   const { toast } = useToast();

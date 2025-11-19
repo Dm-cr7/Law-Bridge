@@ -14,11 +14,11 @@
 
 import React, { useEffect, useState } from "react";
 import axios from "@/utils/axiosInstance";
-import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
+import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/Card.jsx";
+import { Button } from "@/components/ui/Button.jsx";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { useToast } from "@/components/ui/use-toast";import { Loader2, FileText, Download, CheckCircle } from "lucide-react";
+import { useToast } from "@/components/ui/use-toast.jsx";import { Loader2, FileText, Download, CheckCircle } from "lucide-react";
 
 export default function AwardGenerator({ arbitrationId }) {
   const [awardText, setAwardText] = useState("");

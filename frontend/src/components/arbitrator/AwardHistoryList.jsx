@@ -15,12 +15,12 @@
 
 import React, { useEffect, useState, useMemo } from "react";
 import axios from "@/utils/axiosInstance";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
-import { Input } from "@/components/ui/Input";
-import { Button } from "@/components/ui/Button";
-import { Badge } from "@/components/ui/badge";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card.jsx";
+import { Input } from "@/components/ui/Input.jsx";
+import { Button } from "@/components/ui/Button.jsx";
+import { Badge } from "@/components/ui/Badge.jsx";
 import { Loader2, Download, Search, FileText } from "lucide-react";
-import { useToast } from "@/components/ui/use-toast";
+import { useToast } from "@/components/ui/use-toast.jsx";
 export default function AwardHistoryList({ arbitratorId }) {
   const [awards, setAwards] = useState([]);
   const [filtered, setFiltered] = useState([]);

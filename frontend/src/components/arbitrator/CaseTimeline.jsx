@@ -24,9 +24,9 @@ import {
   Scale,
   FileSignature,
 } from "lucide-react";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
-import { Separator } from "@/components/ui/separator";
-import { Badge } from "@/components/ui/badge";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card.jsx";
+import { Separator } from "@/components/ui/separator.jsx";
+import { Badge } from "@/components/ui/Badge.jsx";
 import { cn } from "@/lib/utils";
 
 const CaseTimeline = ({ arbitration }) => {

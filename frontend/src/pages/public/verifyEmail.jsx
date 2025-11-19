@@ -4,7 +4,7 @@ import { CheckCircle, XCircle, Mail, RefreshCw, ArrowRight } from "lucide-react"
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "react-hot-toast";
 import api from "@/utils/api";
-import { Button } from "@/components/ui/Button";
+import { Button } from "@/components/ui/Button.jsx";
 import ResponsiveImage from "@/components/ResponsiveImage";
 
 /**

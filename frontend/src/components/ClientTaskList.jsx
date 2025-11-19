@@ -5,7 +5,7 @@
  * Features:
  *  • Fetches tasks via /api/tasks?clientId=
  *  • Live sync via Socket.IO (task:new / task:update / task:deleted)
- *  • Status badges, overdue highlighting
+ *  • Status Badges, overdue highlighting
  *  • Assigned advocate & priority display
  *  • Responsive & accessible
  * -------------------------------------------------------

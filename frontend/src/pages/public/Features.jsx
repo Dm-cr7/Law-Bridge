@@ -10,7 +10,7 @@ import {
   FileText,
 } from "lucide-react";
 import { Link } from "react-router-dom";
-import { Button } from "@/components/ui/Button";
+import { Button } from "@/components/ui/Button.jsx";
 
 /**
  * 🌤️ Features.jsx — Bright Gradient Edition

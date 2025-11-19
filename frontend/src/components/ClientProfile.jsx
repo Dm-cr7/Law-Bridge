@@ -6,8 +6,8 @@ import {
   TabsTrigger,
   TabsContent,
 } from "@/components/ui/tabs";
-import { Card, CardContent } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
+import { Card, CardContent } from "@/components/ui/Card.jsx";
+import { Button } from "@/components/ui/Button.jsx";
 import { X, Edit, RefreshCw } from "lucide-react";
 import { toast } from "react-hot-toast";
 import { socket } from "@/utils/socket";

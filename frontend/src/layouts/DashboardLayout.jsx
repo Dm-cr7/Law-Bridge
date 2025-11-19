@@ -3,7 +3,7 @@ import React, { useState } from "react";
 import { Outlet } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Bell, Menu } from "lucide-react";
-import { Button } from "@/components/ui/Button";
+import { Button } from "@/components/ui/Button.jsx";
 import Sidebar from "@/components/Sidebar"; // ✅ use the new Sidebar
 import { useAuth } from "@/context/AuthContext";
 

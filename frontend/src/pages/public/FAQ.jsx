@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { HelpCircle, Mail, MessageSquare, ChevronDown } from "lucide-react";
-import { Button } from "@/components/ui/Button";
+import { Button } from "@/components/ui/Button.jsx";
 
 /**
  * 🧠 FAQ.jsx / Support Page

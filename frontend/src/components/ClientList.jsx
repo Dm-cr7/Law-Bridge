@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
-import { Card, CardContent } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
+import { Card, CardContent } from "@/components/ui/Card.jsx";
+import { Button } from "@/components/ui/Button.jsx";
+import { Input } from "@/components/ui/Input.jsx";
 import { toast } from "react-hot-toast";
 import { Eye, Plus, RefreshCw } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";

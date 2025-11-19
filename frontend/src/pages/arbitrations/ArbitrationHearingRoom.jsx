@@ -26,11 +26,11 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
-} from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
-import { Badge } from "@/components/ui/badge";
-import ScrollArea from "@/components/ui/ScrollArea";
+} from "@/components/ui/Card.jsx";
+import { Button } from "@/components/ui/Button.jsx";
+import { Input } from "@/components/ui/Input.jsx";
+import { Badge } from "@/components/ui/Badge.jsx";
+import ScrollArea from "@/components/ui/ScrollArea.jsx";
 import { toast } from "react-hot-toast";
 import {
   Loader2,
