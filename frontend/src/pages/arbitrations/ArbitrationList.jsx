@@ -14,7 +14,7 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "@/utils/axiosInstance";
-import ArbitrationListItem from "@/pages/arbitrations/ArbitrationListItem";import { Input } from "@/components/ui/input";
+import ArbitrationListItem from "@/pages/arbitrations/ArbitrationListItem";import { Input } from "@/components/ui/Input";
 import { Select, SelectTrigger, SelectContent, SelectItem } from "@/components/ui/select";
 import { Button } from "@/components/ui/Button";
 import { Loader2, RefreshCcw, Filter } from "lucide-react";
