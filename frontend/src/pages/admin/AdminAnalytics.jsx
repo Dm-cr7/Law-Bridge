@@ -16,7 +16,7 @@
 
 import React, { useEffect, useState } from "react";
 import axios from "@/utils/axiosInstance";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Download, RefreshCcw, BarChart2, Users, FileText, Scale } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";import { LineChart, Line, PieChart, Pie, Cell, Tooltip, ResponsiveContainer, XAxis, YAxis, Bar, BarChart, Legend } from "recharts";
