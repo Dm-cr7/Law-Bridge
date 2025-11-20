@@ -23,8 +23,12 @@ const Navbar = () => (
       >
         LawBridge
       </Link>
+      
 
       <nav className="flex items-center gap-8 text-blue-800 font-medium">
+        <Link to="/" className="hover:text-blue-500 transition">
+        Home
+        </Link>
         <Link to="/about" className="hover:text-blue-500 transition">
           About
         </Link>

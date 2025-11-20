@@ -16,9 +16,9 @@ export default function About() {
   const heroBg = "/images/legal-bg.jpg";
   const storyImg = "/images/4.jpg"; // choose a good content image from your set
   const team = [
-    { name: "Jane Wanjiku", title: "Founder & CEO", img: "/images/1.jpg" },
-    { name: "David Kamau", title: "Head of Legal Innovation", img: "/images/2.jpg" },
-    { name: "Aisha Njoroge", title: "Chief Technology Officer", img: "/images/3.jpg" },
+    { name: "David Kamau", title: "Founder & CEO", img: "/images/1.jpg" },
+    { name: "Jane Wanjiku", title: "Head of Legal Innovation", img: "/images/2.jpg" },
+    { name: "Edward Njoroge", title: "Chief Technology Officer", img: "/images/3.jpg" },
   ];
 
   return (

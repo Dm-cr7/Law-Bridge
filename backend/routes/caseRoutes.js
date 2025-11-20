@@ -1,15 +1,22 @@
+// backend/routes/caseRoutes.js
 /**
- * backend/routes/caseRoutes.js
- * -------------------------------------------------------------
  * Case Management Routes (Realtime + Role-Based Access)
  * -------------------------------------------------------------
- * Features:
- *  ✅ Full CRUD operations (create, read, update, soft-delete, restore)
- *  ✅ Role-based sharing & collaboration
- *  ✅ Hearings, participants, team management
- *  ✅ Notes & attachments
- *  ✅ Analytics & export (CSV / JSON)
- * -------------------------------------------------------------
+ * - Full CRUD operations (create, read, update, soft-delete, restore)
+ * - Role-based sharing & collaboration
+ * - Hearings, participants, team management
+ * - Notes & attachments
+ * - Analytics & export (CSV / JSON)
+ *
+ * Additions:
+ * - PATCH /:id (partial update) alongside PUT /:id
+ * - Convenience endpoints:
+ *    PATCH /:id/pause   -> sets status to 'paused' (delegates to updateCaseStatus)
+ *    PATCH /:id/resume  -> sets status back to provided or 'filed' (delegates to updateCaseStatus)
+ *
+ * Important:
+ * - All routes are protected with `protect`.
+ * - Authorization uses role shortcuts defined below.
  */
 
 import express from "express";
@@ -39,163 +46,214 @@ import { protect, authorize } from "../middleware/authMiddleware.js";
 const router = express.Router();
 
 /* =======================================================
-   🔒 ROLE SHORTCUTS
+   Role shortcut helpers
    ======================================================= */
 const advocateRoles = ["advocate", "admin", "arbitrator"];
 const generalRoles = ["advocate", "arbitrator", "admin", "client"];
 
 /* =======================================================
-   📊 ANALYTICS & EXPORT
+   Analytics & Export
+   -------------------------------------------------------
+   keep these before parameterized routes (/:id)
    ======================================================= */
 
 /**
- * @route   GET /api/cases/stats
- * @desc    Get case analytics summary (dashboard cards)
- * @access  Private (Advocate, Admin)
+ * GET /api/cases/stats
+ * access: Advocate, Admin
  */
 router.get("/stats", protect, authorize("advocate", "admin"), getCaseStats);
 
 /**
- * @route   GET /api/cases/export
- * @desc    Export all accessible cases (CSV or JSON)
- * @access  Private (Advocate, Admin)
+ * GET /api/cases/export
+ * access: Advocate, Admin
  */
 router.get("/export", protect, authorize("advocate", "admin"), exportCasesCSV);
 
 /* =======================================================
-   🧾 CORE CASE MANAGEMENT
+   Core case management
    ======================================================= */
 
 /**
- * @route   POST /api/cases
- * @desc    Create a new case
- * @access  Private (Advocate, Client)
+ * POST /api/cases
+ * Create a new case (optionally with initial hearing(s) in body)
+ * access: Advocate, Client
  */
 router.post("/", protect, authorize("advocate", "client"), createCase);
 
 /**
- * @route   GET /api/cases
- * @desc    Fetch all accessible cases for logged-in user
- * @query   ?mine=true | ?category= | ?status= | ?q=
- * @access  Private
+ * GET /api/cases
+ * List cases (filters: ?page=&limit=&category=&status=&q=)
+ * access: Private (advocate, arbitrator, admin, client)
  */
 router.get("/", protect, authorize(...generalRoles), getCases);
 
 /**
- * @route   GET /api/cases/:id
- * @desc    Retrieve a case by ID (if user has access)
- * @access  Private
+ * GET /api/cases/:id
+ * Retrieve a case by ID (access enforced in controller)
  */
 router.get("/:id", protect, authorize(...generalRoles), getCaseById);
 
 /**
- * @route   PUT /api/cases/:id
- * @desc    Update editable case fields
- * @access  Private (Advocate, Arbitrator, Admin)
+ * PUT /api/cases/:id
+ * Full replace/update of allowed case fields (keeps history)
+ * access: Advocate, Arbitrator, Admin
  */
 router.put("/:id", protect, authorize(...advocateRoles), updateCase);
 
 /**
- * @route   PATCH /api/cases/:id/status
- * @desc    Update case status
- * @access  Private (Advocate, Arbitrator, Admin)
+ * PATCH /api/cases/:id
+ * Partial update (only provided fields will be updated)
+ * access: Advocate, Arbitrator, Admin
+ *
+ * Uses same controller `updateCase` which already handles updates & permission checks.
+ * Keeping both PUT and PATCH for client flexibility.
+ */
+router.patch("/:id", protect, authorize(...advocateRoles), updateCase);
+
+/* =======================================================
+   Status / Pause / Resume
+   ======================================================= */
+
+/**
+ * PATCH /api/cases/:id/status
+ * Generic status update (body: { status: '...' })
+ * access: Advocate, Arbitrator, Admin
  */
 router.patch("/:id/status", protect, authorize(...advocateRoles), updateCaseStatus);
 
 /**
- * @route   DELETE /api/cases/:id
- * @desc    Soft-delete a case (mark as deleted)
- * @access  Private (Advocate, Admin)
+ * PATCH /api/cases/:id/pause
+ * Convenience route — sets status to 'paused' via updateCaseStatus
+ * access: Advocate, Arbitrator, Admin
+ */
+router.patch(
+  "/:id/pause",
+  protect,
+  authorize(...advocateRoles),
+  (req, res, next) => {
+    // set requested status and reuse centralized handler
+    req.body = req.body || {};
+    req.body.status = "paused";
+    return updateCaseStatus(req, res, next);
+  }
+);
+
+/**
+ * PATCH /api/cases/:id/resume
+ * Convenience route — resumes a paused case.
+ * By default we set status back to 'filed' but callers can pass desired status in body.
+ * access: Advocate, Arbitrator, Admin
+ */
+router.patch(
+  "/:id/resume",
+  protect,
+  authorize(...advocateRoles),
+  (req, res, next) => {
+    req.body = req.body || {};
+    // allow caller to pass status explicitly, otherwise resume to 'filed'
+    req.body.status = req.body.status || "filed";
+    return updateCaseStatus(req, res, next);
+  }
+);
+
+/* =======================================================
+   Delete / Restore
+   ======================================================= */
+
+/**
+ * DELETE /api/cases/:id
+ * Soft-delete (mark case as deleted)
+ * access: Advocate, Admin
  */
 router.delete("/:id", protect, authorize("advocate", "admin"), softDeleteCase);
 
 /**
- * @route   POST /api/cases/:id/restore
- * @desc    Restore a previously soft-deleted case
- * @access  Private (Admin)
+ * POST /api/cases/:id/restore
+ * Restore a previously soft-deleted case
+ * access: Admin
  */
 router.post("/:id/restore", protect, authorize("admin"), restoreCase);
 
 /* =======================================================
-   🤝 COLLABORATION & SHARING
+   Collaboration & Sharing
    ======================================================= */
 
 /**
- * @route   PATCH /api/cases/:id/share
- * @desc    Share a case with other users (adds to sharedWith[])
- * @access  Private (Advocate, Admin)
+ * PATCH /api/cases/:id/share
+ * Share a case with another user (adds to sharedWith[])
+ * access: Advocate, Admin
  */
 router.patch("/:id/share", protect, authorize("advocate", "admin"), shareCase);
 
 /**
- * @route   POST /api/cases/:id/notes
- * @desc    Add a note to a case (supports visibility levels)
- * @access  Private (Advocate, Admin, Client, Arbitrator)
+ * POST /api/cases/:id/notes
+ * Add a note (visibility: private|shared|public)
+ * access: Advocate, Admin, Client, Arbitrator
  */
 router.post("/:id/notes", protect, authorize(...generalRoles), addCaseNote);
 
 /**
- * @route   POST /api/cases/:id/attachments
- * @desc    Add an attachment (metadata only — after upload)
- * @access  Private (Advocate, Admin, Client, Arbitrator)
+ * POST /api/cases/:id/attachments
+ * Add attachment (metadata only — file should already be uploaded)
+ * access: Advocate, Admin, Client, Arbitrator
  */
 router.post("/:id/attachments", protect, authorize(...generalRoles), addAttachment);
 
 /**
- * @route   DELETE /api/cases/:id/attachments
- * @desc    Remove attachment by file URL
- * @access  Private (Advocate, Admin, Arbitrator)
+ * DELETE /api/cases/:id/attachments
+ * Remove attachment by fileUrl
+ * access: Advocate, Admin, Arbitrator
  */
 router.delete("/:id/attachments", protect, authorize(...advocateRoles), deleteAttachment);
 
 /* =======================================================
-   ⚖️ HEARINGS
+   Hearings
    ======================================================= */
 
 /**
- * @route   POST /api/cases/:id/hearings
- * @desc    Add a hearing to a case
- * @access  Private (Advocate, Arbitrator, Admin)
+ * POST /api/cases/:id/hearings
+ * Add a hearing to a case
+ * access: Advocate, Arbitrator, Admin
  */
 router.post("/:id/hearings", protect, authorize(...advocateRoles), addCaseHearing);
 
 /* =======================================================
-   👥 PARTICIPANTS
+   Participants
    ======================================================= */
 
 /**
- * @route   POST /api/cases/:id/participants
- * @desc    Add a participant (client/respondent/witness)
- * @access  Private (Advocate, Arbitrator, Admin)
+ * POST /api/cases/:id/participants
+ * Add participant to a case
+ * access: Advocate, Arbitrator, Admin
  */
 router.post("/:id/participants", protect, authorize(...advocateRoles), addCaseParticipant);
 
 /**
- * @route   DELETE /api/cases/:id/participants
- * @desc    Remove a participant from case
- * @access  Private (Advocate, Arbitrator, Admin)
+ * DELETE /api/cases/:id/participants
+ * Remove a participant from a case
+ * access: Advocate, Arbitrator, Admin
  */
 router.delete("/:id/participants", protect, authorize(...advocateRoles), removeCaseParticipant);
 
 /* =======================================================
-   👩‍⚖️ TEAM MANAGEMENT
+   Team management
    ======================================================= */
 
 /**
- * @route   POST /api/cases/:id/team
- * @desc    Add a team member (assistant, paralegal, co-counsel)
- * @access  Private (Advocate, Admin)
+ * POST /api/cases/:id/team
+ * Add team member (assistant, paralegal, co-counsel)
+ * access: Advocate, Admin
  */
 router.post("/:id/team", protect, authorize("advocate", "admin"), addTeamMember);
 
 /**
- * @route   DELETE /api/cases/:id/team
- * @desc    Remove a team member from the case
- * @access  Private (Advocate, Admin)
+ * DELETE /api/cases/:id/team
+ * Remove team member
+ * access: Advocate, Admin
  */
 router.delete("/:id/team", protect, authorize("advocate", "admin"), removeTeamMember);
 
 /* =======================================================
-   🚀 EXPORT ROUTER
+   Export the router
    ======================================================= */
 export default router;

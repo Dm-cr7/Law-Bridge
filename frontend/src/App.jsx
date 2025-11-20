@@ -1,6 +1,6 @@
 // frontend/src/App.jsx
 import React, { Suspense, lazy } from "react";
-import { Routes, Route } from "react-router-dom";
+import { Routes, Route, Navigate } from "react-router-dom";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 
 // 🌍 Layouts
@@ -19,8 +19,8 @@ const Login = lazy(() => import("./pages/public/Login.jsx"));
 const Register = lazy(() => import("./pages/public/Register.jsx"));
 const ForgotPassword = lazy(() => import("./pages/public/ForgotPassword.jsx"));
 const ResetPassword = lazy(() => import("./pages/public/ResetPassword.jsx"));
-const VerifyEmail = lazy(() => import("./pages/public/verifyEmail.jsx"));
-
+// Make sure file name casing matches the file in your repo:
+const VerifyEmail = lazy(() => import("./pages/public/VerifyEmail.jsx"));
 
 // ⚖️ Role Dashboards
 const AdvocateDashboard = lazy(() => import("./pages/AdvocateDashboard.jsx"));
@@ -42,11 +42,13 @@ const Settings = lazy(() => import("./pages/Settings.jsx"));
 const NotificationsCenter = lazy(() => import("./pages/NotificationsCenter.jsx"));
 
 // 📅 Hearings Module
-const HearingsCalendar = lazy(() => import("./components/HearingsCalendar.jsx")); // ✅ NEW
+const HearingsCalendar = lazy(() => import("./components/HearingsCalendar.jsx"));
+const HearingsPage = lazy(() => import("./pages/HearingsPage.jsx"));
+const HearingScheduler = lazy(() => import("./components/arbitrator/HearingScheduler.jsx"));
 
 // 👩‍💼 Paralegal-specific
 const ParalegalTasks = lazy(() => import("./pages/ParalegalTasks.jsx"));
-const IntakePage = lazy(() => import("./pages/intake/IntakePage.jsx")); // <-- Added intake page
+const IntakePage = lazy(() => import("./pages/intake/IntakePage.jsx"));
 
 // 👑 Admin routes
 const AdminAnalytics = lazy(() => import("./pages/admin/AdminAnalytics.jsx"));
@@ -76,9 +78,13 @@ export default function App() {
       }
     >
       <Routes>
-        {/* 🌍 PUBLIC ROUTES */}
+        {/* 🌍 PUBLIC ROUTES (PublicLayout) */}
         <Route element={<PublicLayout />}>
+          {/* Keep root (/) canonical so old links work */}
           <Route path="/" element={<Home />} />
+          {/* Keep /home as an alias that redirects to / (prevents 404 for /home links) */}
+          <Route path="/home" element={<Navigate to="/" replace />} />
+
           <Route path="/about" element={<About />} />
           <Route path="/services" element={<Services />} />
           <Route path="/features" element={<Features />} />
@@ -92,7 +98,7 @@ export default function App() {
           <Route path="/verify-email" element={<VerifyEmail />} />
         </Route>
 
-        {/* 🔒 PROTECTED ROUTES */}
+        {/* 🔒 PROTECTED ROUTES - wrapped by ProtectedRoute */}
         <Route
           element={
             <ProtectedRoute
@@ -107,24 +113,26 @@ export default function App() {
             />
           }
         >
-          {/* mount DashboardLayout at /dashboard and use nested routes */}
+          {/* DashboardLayout mounted at /dashboard with nested routes */}
           <Route path="/dashboard" element={<DashboardLayout />}>
-
-            {/* index => neutral /dashboard. RoleBasedDashboard chooses what to render (keeps URL). */}
             <Route index element={<RoleBasedDashboard />} />
 
-            {/* explicit role pages (still accessible directly) */}
+            {/* explicit role pages */}
             <Route path="advocate" element={<AdvocateDashboard />} />
             <Route path="paralegal" element={<ParalegalDashboard />} />
             <Route path="mediator" element={<MediatorDashboard />} />
             <Route path="reconciliator" element={<ReconciliatorDashboard />} />
             <Route path="arbitrator" element={<ArbitratorDashboard />} />
 
-            {/* paralegal intake route */}
+            {/* paralegal intake */}
             <Route path="intake" element={<IntakePage />} />
 
-            {/* dashboard-scoped routes (relative paths) */}
+            {/* hearings - keep canonical /dashboard/hearings */}
             <Route path="hearings" element={<HearingsCalendar />} />
+            {/* extra hearings pages */}
+            <Route path="hearings/page" element={<HearingsPage />} />
+            <Route path="hearings/scheduler" element={<HearingScheduler />} />
+
             <Route path="paralegal/tasks" element={<ParalegalTasks />} />
             <Route path="cases" element={<Cases />} />
             <Route path="cases/:id" element={<CaseDetails />} />
@@ -151,7 +159,7 @@ export default function App() {
           </Route>
         </Route>
 
-        {/* 🚫 404 Fallback */}
+        {/* 🚫 404 fallback */}
         <Route path="*" element={<NotFound />} />
       </Routes>
     </Suspense>

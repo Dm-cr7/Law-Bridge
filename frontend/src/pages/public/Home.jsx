@@ -34,9 +34,9 @@ const features = [
 ];
 
 const testimonialData = [
-  { name: "Adv. Mercy Nyaga", role: "Senior Advocate", img: "/images/1.jpg" },
-  { name: "Samuel O.", role: "Client", img: "/images/2.jpg" },
-  { name: "Mediator Jane M.", role: "Mediator", img: "/images/3.jpg" },
+  { name: "Adv. Moses Nyaga", role: "Senior Advocate", img: "/images/1.jpg" },
+  { name: "Adv. Mercy Nyaga", role: "Senior Paralegal", img: "/images/2.jpg" },
+  { name: "Mediator John M.", role: "Mediator", img: "/images/3.jpg" },
 ];
 
 export default function Home() {

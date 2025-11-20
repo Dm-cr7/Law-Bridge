@@ -32,7 +32,7 @@ export default function ArbitrationList() {
     const fetchArbitrations = async () => {
       try {
         setLoading(true);
-        const { data } = await axios.get("/api/arbitrations");
+        const { data } = await axios.get("/arbitrations");
         if (data?.success) {
           setArbitrations(data.arbitrations || []);
           setFiltered(data.arbitrations || []);
@@ -74,7 +74,7 @@ export default function ArbitrationList() {
   const handleRefresh = async () => {
     setLoading(true);
     try {
-      const { data } = await axios.get("/api/arbitrations");
+      const { data } = await axios.get("/arbitrations");
       setArbitrations(data.arbitrations || []);
       setFiltered(data.arbitrations || []);
       toast({ title: "List updated", description: "Arbitrations refreshed." });

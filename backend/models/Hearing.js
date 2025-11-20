@@ -5,93 +5,213 @@ import mongoose from "mongoose";
  * Hearing Model
  * ------------------------------------------------------------
  * Represents scheduled hearing sessions for arbitration/court cases.
+ *
+ * Features added:
+ *  - recurrence support (freq, interval, count)
+ *  - reminder scheduling metadata
+ *  - text index for title/description for quick search
+ *  - instance helpers: addNote, softDelete, restore, toPublicJSON
+ *  - static helpers: findUpcoming, findByCase
+ *  - virtuals: isUpcoming
+ *  - robust toJSON transform
  */
 
-const hearingSchema = new mongoose.Schema(
+const { Schema } = mongoose;
+
+const ParticipantGroups = {
+  advocates: [{ type: Schema.Types.ObjectId, ref: "User" }],
+  arbitrators: [{ type: Schema.Types.ObjectId, ref: "User" }],
+  clients: [{ type: Schema.Types.ObjectId, ref: "User" }],
+  respondents: [{ type: Schema.Types.ObjectId, ref: "User" }],
+};
+
+const NoteSchema = new Schema(
   {
-    case: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Case",
-      required: true,
-      index: true,
-    },
+    content: { type: String, trim: true, required: true },
+    createdBy: { type: Schema.Types.ObjectId, ref: "User" },
+    createdAt: { type: Date, default: Date.now },
+  },
+  { _id: true }
+);
 
-    title: {
-      type: String,
-      required: [true, "Hearing title is required"],
-      trim: true,
-      maxlength: 200,
-    },
+const HearingSchema = new Schema(
+  {
+    case: { type: Schema.Types.ObjectId, ref: "Case", required: true, index: true },
 
-    description: {
-      type: String,
-      trim: true,
-      maxlength: 2000,
-      default: "",
-    },
+    title: { type: String, required: [true, "Hearing title is required"], trim: true, maxlength: 200 },
+    description: { type: String, trim: true, maxlength: 2000, default: "" },
 
-    // Use `start` and `end` for range semantics while keeping `date` for legacy compatibility
-    start: {
-      type: Date,
-      required: true,
-      index: true,
-    },
-    end: {
-      type: Date,
-      required: false,
-    },
+    // timeline
+    start: { type: Date, required: true, index: true },
+    end: { type: Date },
 
-    venue: {
-      type: String,
-      trim: true,
-      default: "To be determined",
-    },
+    // location / remote meeting
+    venue: { type: String, trim: true, default: "To be determined" },
+    meetingLink: { type: String, trim: true, default: null },
 
-    meetingLink: {
-      type: String,
-      trim: true,
-      default: null,
-    },
-
+    // status
     status: {
       type: String,
-      enum: ["scheduled", "in_progress", "adjourned", "completed", "cancelled"],
+      enum: ["draft", "scheduled", "in_progress", "adjourned", "completed", "cancelled"],
       default: "scheduled",
       index: true,
     },
 
+    // participants grouped by role
     participants: {
-      advocates: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
-      arbitrators: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
-      clients: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
-      respondents: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+      type: new Schema(ParticipantGroups, { _id: false }),
+      default: {},
     },
 
-    notes: [
-      {
-        content: { type: String, trim: true },
-        createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-        createdAt: { type: Date, default: Date.now },
-      },
-    ],
+    // attach notes
+    notes: { type: [NoteSchema], default: [] },
 
-    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
-    updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    // recurrence (basic)
+    recurrence: {
+      freq: { type: String, enum: ["none", "daily", "weekly", "monthly"], default: "none" },
+      interval: { type: Number, default: 1, min: 1 },
+      count: { type: Number }, // number of occurrences (optional)
+    },
+
+    // reminder metadata — scheduling of reminder worker happens outside model
+    reminder: {
+      enabled: { type: Boolean, default: false },
+      minutesBefore: { type: Number, default: 30 },
+      nextReminderAt: { type: Date, default: null }, // computed by server worker when scheduling
+    },
+
+    createdBy: { type: Schema.Types.ObjectId, ref: "User", required: true, index: true },
+    updatedBy: { type: Schema.Types.ObjectId, ref: "User" },
+
+    // soft delete
     deletedAt: { type: Date, default: null },
-    arbitration: { type: mongoose.Schema.Types.ObjectId, ref: "Arbitration", default: null }, // optional link
-    meta: { type: mongoose.Schema.Types.Mixed },
+
+    arbitration: { type: Schema.Types.ObjectId, ref: "Arbitration", default: null },
+
+    meta: { type: Schema.Types.Mixed, default: {} },
   },
-  { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } }
+  {
+    timestamps: true,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true },
+    versionKey: false,
+  }
 );
 
-// Virtual: isUpcoming (based on start)
-hearingSchema.virtual("isUpcoming").get(function () {
+/* -------------------- Indexes -------------------- */
+// text index for search across title + description (if enabled in app)
+HearingSchema.index({ title: "text", description: "text" });
+HearingSchema.index({ start: 1 });
+HearingSchema.index({ case: 1 });
+
+/* -------------------- Virtuals -------------------- */
+HearingSchema.virtual("isUpcoming").get(function () {
   try {
-    return this.start && new Date(this.start) > new Date() && this.status === "scheduled";
+    if (!this.start) return false;
+    return new Date(this.start) > new Date() && this.status === "scheduled" && !this.deletedAt;
   } catch {
     return false;
   }
 });
 
-const Hearing = mongoose.model("Hearing", hearingSchema);
+/* -------------------- toJSON transform -------------------- */
+HearingSchema.set("toJSON", {
+  transform(doc, ret) {
+    // remove internals
+    delete ret.__v;
+    if (ret.deletedAt) {
+      // optionally hide deletedAt from public JSON but keep if needed
+    }
+    return ret;
+  },
+});
+
+/* -------------------- Instance methods -------------------- */
+
+/**
+ * addNote(content, userId)
+ * Adds a note to the hearing and returns the pushed note.
+ */
+HearingSchema.methods.addNote = async function (content, userId) {
+  if (!content || !String(content).trim()) throw new Error("Note content required");
+  const note = { content: String(content).trim(), createdBy: userId, createdAt: new Date() };
+  this.notes = this.notes || [];
+  this.notes.push(note);
+  this.updatedBy = userId;
+  await this.save();
+  return this.notes[this.notes.length - 1];
+};
+
+/**
+ * softDelete(userId)
+ * Marks hearing as soft-deleted and sets deletedAt
+ */
+HearingSchema.methods.softDelete = async function (userId) {
+  this.deletedAt = new Date();
+  this.updatedBy = userId;
+  await this.save();
+  return this;
+};
+
+/**
+ * restore(userId)
+ * Restores a previously soft-deleted hearing
+ */
+HearingSchema.methods.restore = async function (userId) {
+  this.deletedAt = null;
+  this.updatedBy = userId;
+  await this.save();
+  return this;
+};
+
+/**
+ * toPublicJSON
+ * Strips internal-only fields
+ */
+HearingSchema.methods.toPublicJSON = function () {
+  const obj = this.toObject({ virtuals: true });
+  delete obj.meta;
+  return obj;
+};
+
+/* -------------------- Static helpers -------------------- */
+
+/**
+ * findUpcoming(limit)
+ */
+HearingSchema.statics.findUpcoming = function (limit = 20) {
+  return this.find({ deletedAt: null, start: { $gte: new Date() }, status: "scheduled" })
+    .sort({ start: 1 })
+    .limit(limit)
+    .populate("case participants.createdBy");
+};
+
+/**
+ * findByCase(caseId, opts)
+ */
+HearingSchema.statics.findByCase = function (caseId, opts = {}) {
+  const q = { case: caseId, deletedAt: null };
+  const query = this.find(q).sort(opts.sort || { start: 1 });
+  if (opts.limit) query.limit(opts.limit);
+  return query;
+};
+
+/* -------------------- Pre-save sanity -------------------- */
+HearingSchema.pre("save", function (next) {
+  // If meetingLink present but no venue, set venue to "Online"
+  if (this.meetingLink && (!this.venue || this.venue === "To be determined")) {
+    this.venue = "Online";
+  }
+
+  // Basic start/end normalization
+  if (this.start && this.end && new Date(this.end) < new Date(this.start)) {
+    // ensure end is after start — drop end if invalid
+    this.end = null;
+  }
+
+  next();
+});
+
+/* -------------------- Export -------------------- */
+const Hearing = mongoose.models.Hearing || mongoose.model("Hearing", HearingSchema);
 export default Hearing;

@@ -1,105 +1,123 @@
-/**frontend\src\utils\api.js
- * utils/api.js
- * ------------------------------------------------------------
- * Centralized Axios instance for API communication
- *
- * Features:
- *  ✅ Reads API base URL from environment
- *  ✅ Automatically attaches JWT token from storage
- *  ✅ Handles 401 (unauthorized) globally by redirecting to login
- *  ✅ Handles network errors & logs them clearly
- *  ✅ Supports multipart/form-data (uploads)
- *  ✅ Designed for use across all components & contexts
+// frontend/src/utils/api.js
+/**
+ * Centralized Axios instance
+ * - Silent handling of aborted/canceled requests
+ * - Preserves original Error object for callers (don't replace with error.response)
+ * - Central 401 handling + optional redirect
+ * - Exports uploadFile helper that uses the same instance
  */
 
 import axios from "axios";
 
-const API_BASE_URL =
-  import.meta.env.VITE_API_URL || "http://localhost:5000/api";
-
+const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 const TOKEN_KEY = "authToken";
 const USER_KEY = "authUser";
 
-// --- Create Axios instance ---
 const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {
     "Content-Type": "application/json",
   },
-  timeout: 15000, // 15s timeout to avoid hanging requests
+  timeout: 15000,
 });
 
-// --- Request Interceptor ---
-// Inject token into Authorization header for every outgoing request
+/* Helper to detect cancellation / abort */
+function isAbortError(err) {
+  if (!err) return false;
+  // axios v1+ uses code === 'ERR_CANCELED'
+  if (err?.code === "ERR_CANCELED") return true;
+  if (err?.name === "AbortError") return true;
+  if (axios.isCancel && axios.isCancel(err)) return true;
+  return false;
+}
+
+/* Request interceptor: attach token if present */
 api.interceptors.request.use(
   (config) => {
     const token =
       localStorage.getItem(TOKEN_KEY) || sessionStorage.getItem(TOKEN_KEY);
     if (token) {
+      config.headers = config.headers || {};
       config.headers.Authorization = `Bearer ${token}`;
     }
     return config;
   },
-  (error) => {
-    console.error("❌ Request config error:", error);
-    return Promise.reject(error);
+  (err) => {
+    // very rare: axios request config problem
+    console.error("❌ API request config error:", err?.message || err);
+    return Promise.reject(err);
   }
 );
 
-// --- Response Interceptor ---
-// Handle global errors like expired tokens or network issues
+/* Response interceptor: don't swallow cancellation; preserve error object */
 api.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    if (error.response) {
-      const { status, data } = error.response;
+  (res) => res,
+  (err) => {
+    // If aborted/canceled, quietly propagate the original error (no noisy logs)
+    if (isAbortError(err)) {
+      // do not log — callers should handle canceled requests if needed
+      return Promise.reject(err);
+    }
 
-      // JWT expired or invalid — force logout
+    // If a response exists (server returned non-2xx)
+    if (err && err.response) {
+      const { status, data } = err.response;
+
+      // handle 401 centrally
       if (status === 401) {
-        console.warn("🔒 401 Unauthorized – token invalid or expired");
-        localStorage.removeItem(TOKEN_KEY);
-        localStorage.removeItem(USER_KEY);
-        sessionStorage.removeItem(TOKEN_KEY);
-        sessionStorage.removeItem(USER_KEY);
-        window.location.href = "/login";
+        try {
+          console.warn("🔒 401 Unauthorized — clearing auth and redirecting to /login");
+          localStorage.removeItem(TOKEN_KEY);
+          localStorage.removeItem(USER_KEY);
+          sessionStorage.removeItem(TOKEN_KEY);
+          sessionStorage.removeItem(USER_KEY);
+        } catch (e) {}
+        // Redirect only in browser context
+        if (typeof window !== "undefined") {
+          window.location.href = "/login";
+        }
       }
 
-      // 403 Forbidden — show friendly message
+      // log important server problems (but keep original error)
       if (status === 403) {
-        console.error("🚫 Access denied:", data?.message || "Forbidden");
+        console.error("🚫 API 403 Forbidden:", data?.message || data || "");
+      } else if (status >= 500) {
+        console.error("💥 API Server error:", data?.message || data || "");
       }
 
-      // 500+ errors — server issues
-      if (status >= 500) {
-        console.error("💥 Server error:", data?.message || "Internal Server Error");
-      }
-
-      return Promise.reject(error.response);
+      // Preserve original axios error (do NOT replace with err.response)
+      return Promise.reject(err);
     }
 
-    if (error.request) {
-      // Request made but no response
-      console.error("🌐 Network or CORS error:", error.message);
-    } else {
-      // Something happened while setting up the request
-      console.error("⚙️ Axios setup error:", error.message);
+    // No response (network / CORS / offline)
+    if (err && err.request) {
+      console.error("🌐 Network/CORS or no response from server:", err.message || err);
+      return Promise.reject(err);
     }
 
-    return Promise.reject(error);
+    // Fallback: unexpected error during setup
+    console.error("⚙️ Axios setup error:", err?.message || err);
+    return Promise.reject(err);
   }
 );
 
-// --- Helper for multipart/form-data uploads ---
-export const uploadFile = async (endpoint, formData) => {
+/* multipart upload helper */
+export async function uploadFile(endpoint, formData, options = {}) {
   try {
+    const headers = { "Content-Type": "multipart/form-data" };
+    const token =
+      localStorage.getItem(TOKEN_KEY) || sessionStorage.getItem(TOKEN_KEY);
+    if (token) headers.Authorization = `Bearer ${token}`;
+
     const res = await api.post(endpoint, formData, {
-      headers: { "Content-Type": "multipart/form-data" },
+      headers,
+      ...options,
     });
     return res.data;
   } catch (err) {
-    console.error("File upload failed:", err);
+    // rethrow the original error (caller will display)
     throw err;
   }
-};
+}
 
 export default api;

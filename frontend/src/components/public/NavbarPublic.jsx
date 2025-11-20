@@ -1,23 +1,13 @@
-// frontend/src/components/public/NavbarPublic.jsx
 import { useState, useEffect } from "react";
 import { Link, NavLink } from "react-router-dom";
 import { Menu, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import logo from "../../assets/logo.svg"; // ✅ ensure this file exists
 
-/**
- * ⚖️ NavbarPublic.jsx
- * ------------------------------------------------------------
- * Dark gradient navigation bar for LawBridge.
- * Elegant, glassy, and motion-enhanced — designed to fit the
- * new 2D illustration-based homepage.
- */
-
 const NavbarPublic = () => {
   const [menuOpen, setMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
 
-  // Detect scroll for adaptive navbar style
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 20);
     window.addEventListener("scroll", handleScroll);
@@ -42,9 +32,7 @@ const NavbarPublic = () => {
       animate={{ y: 0 }}
       transition={{ duration: 0.6, ease: "easeOut" }}
     >
-      {/* === Container === */}
       <div className="max-w-7xl mx-auto flex items-center justify-between px-6 py-4">
-        {/* ==== Logo ==== */}
         <Link
           to="/"
           className="flex items-center gap-2 group cursor-pointer select-none"
@@ -61,7 +49,6 @@ const NavbarPublic = () => {
           </span>
         </Link>
 
-        {/* ==== Desktop Nav ==== */}
         <div className="hidden md:flex items-center gap-8">
           {navLinks.map((link) => (
             <NavLink
@@ -79,18 +66,20 @@ const NavbarPublic = () => {
             </NavLink>
           ))}
 
-          {/* ==== Portal Button ==== */}
-          <Link
-            to="/portal/login"
-            className="ml-4 bg-gradient-to-r from-sky-600 via-blue-600 to-indigo-700
-              px-5 py-2.5 rounded-full text-white font-semibold shadow-lg shadow-sky-500/30 
-              hover:shadow-sky-400/40 hover:scale-105 transition-all duration-300"
+          {/* Portal now points to the existing /login route */}
+          <NavLink
+            to="/login"
+            className={({ isActive }) =>
+              `ml-4 px-5 py-2.5 rounded-full text-white font-semibold shadow-lg shadow-sky-500/30 
+               bg-gradient-to-r from-sky-600 via-blue-600 to-indigo-700 hover:scale-105 transition-all duration-300 ${
+                 isActive ? "ring-2 ring-sky-400" : ""
+               }`
+            }
           >
             Portal
-          </Link>
+          </NavLink>
         </div>
 
-        {/* ==== Mobile Menu Button ==== */}
         <button
           onClick={() => setMenuOpen(!menuOpen)}
           className="text-sky-300 md:hidden p-2 hover:text-white transition"
@@ -99,7 +88,6 @@ const NavbarPublic = () => {
         </button>
       </div>
 
-      {/* ==== Mobile Menu Drawer ==== */}
       <AnimatePresence>
         {menuOpen && (
           <motion.div
@@ -120,8 +108,10 @@ const NavbarPublic = () => {
                   {link.name}
                 </Link>
               ))}
+
+              {/* mobile Portal link also uses /login */}
               <Link
-                to="/portal/login"
+                to="/login"
                 onClick={() => setMenuOpen(false)}
                 className="bg-gradient-to-r from-sky-600 via-blue-600 to-indigo-600
                   text-white text-center py-2.5 rounded-full font-semibold shadow-md 

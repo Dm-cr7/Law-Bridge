@@ -1,163 +1,190 @@
-// frontend/src/components/hearing/HearingsCalendar.jsx
+// frontend\src\components\HearingsCalendar.jsx
 /**
- * HearingsCalendar.jsx — Robust calendar with debounced range fetch + socket updates
+ * HearingsCalendar.jsx — Full, robust rewrite
  *
- * - Sends date-only params (YYYY-MM-DD) to /api/hearings/calendar by default
- * - Debounces datesSet, cancels in-flight fetches
- * - Uses socket.io for real-time updates
- * - Ignores canceled/aborted requests silently (avoids noisy dev logs)
+ * - Uses a FullCalendar ref (no DOM hacks)
+ * - Debounced range fetch + identical-range short-circuit
+ * - Filters (status, case, search)
+ * - Drag/drop + resize -> optimistic PATCH with rollback
+ * - Export visible range (uses calendar ref)
+ * - Socket updates (create/update/delete)
+ * - Defensive abort handling
  */
 
-import React, { useEffect, useState, useCallback, useRef } from "react";
-import { motion } from "framer-motion";
-import { CalendarDays, Clock } from "lucide-react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
-import { toast } from "react-hot-toast";
+import listPlugin from "@fullcalendar/list";
+import { motion } from "framer-motion";
+import { CalendarDays, Clock, DownloadCloud, RefreshCw } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { useAuth } from "@/context/AuthContext";
+import { toast } from "react-hot-toast";
 import api from "@/utils/api";
 import { io } from "socket.io-client";
+import { useAuth } from "@/context/AuthContext";
 
-/**
- * Props:
- *  - onSelect(hearing) optional
- *  - onCreate(dateStr) optional
- *  - initialView optional (default: "dayGridMonth")
- */
+/* ------------------------------- Config ------------------------------- */
+const DEFAULT_STATUS_COLORS = {
+  scheduled: "bg-blue-500",
+  in_progress: "bg-emerald-500",
+  adjourned: "bg-amber-500",
+  completed: "bg-green-600",
+  cancelled: "bg-slate-600",
+  tentative: "bg-indigo-500",
+};
+
+const NON_FATAL_ABORT_NAMES = new Set(["AbortError", "CanceledError", "ERR_CANCELED"]);
+
+/* ------------------------------- Helpers ------------------------------ */
+const safeData = (res) => {
+  // Always return an array (empty if no events)
+  if (!res) return [];
+  if (res?.data === undefined) {
+    // raw response (maybe already array)
+    return Array.isArray(res) ? res : [];
+  }
+  const d = res.data;
+  if (Array.isArray(d)) return d;
+  if (Array.isArray(d?.data)) return d.data;
+  if (Array.isArray(d?.events)) return d.events;
+  return [];
+};
+
+const toISO = (v) => {
+  if (!v) return null;
+  const d = v instanceof Date ? v : new Date(v);
+  if (isNaN(d.valueOf())) return null;
+  return d.toISOString();
+};
+
+const normalizeRangeKey = (s, e, status, caseId, q) => {
+  const sk = s ? s.slice(0, 10) : "";
+  const ek = e ? e.slice(0, 10) : "";
+  return `${sk}::${ek}::status=${status || "All"}::case=${caseId || ""}::q=${q || ""}`;
+};
+
+const formatHearing = (h) => {
+  if (!h) return null;
+  const id = h._id || h.id || (h._doc && h._doc._id) || null;
+  const start = h.start || h.date || h.datetime || h.scheduledAt || null;
+  const end = h.end || h.to || h.endsAt || null;
+  const title = h.title || (h.case && (h.case.title || h.case.name)) || "Untitled Hearing";
+  const status = h.status || h.state || "scheduled";
+  return {
+    id,
+    title,
+    start,
+    end,
+    extendedProps: {
+      raw: h,
+      status,
+      caseId: h.case?._id || h.case?.id || h.case || null,
+      notes: h.notes || h.description || "",
+    },
+  };
+};
+
+/* ------------------------------ Component ------------------------------ */
 export default function HearingsCalendar({
   onSelect = null,
   onCreate = null,
   initialView = "dayGridMonth",
+  showControls = true,
 }) {
   const { user } = useAuth() || {};
   const navigate = useNavigate();
 
+  // state
   const [events, setEvents] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
-  // Refs
+  const [statusFilter, setStatusFilter] = useState("All");
+  const [caseFilter, setCaseFilter] = useState("");
+  const [searchQ, setSearchQ] = useState("");
+
+  // refs
+  const mountedRef = useRef(true);
   const abortRef = useRef(null);
   const debounceRef = useRef(null);
+  const lastRangeKeyRef = useRef("");
+  const calendarRef = useRef(null);
   const socketRef = useRef(null);
+  const optimisticMapRef = useRef(new Map());
 
-  // Defensive formatter for incoming hearing objects
-  const formatHearing = useCallback((h) => {
-    const id = h._id || h.id || (h._doc && h._doc._id) || null;
-    const start = h.start || h.date || h.datetime || null;
-    const end = h.end || h.to || null;
-    const title = h.title || (h.case && (h.case.title || h.case.name)) || "Untitled Hearing";
+  /* --------------------------- Fetch events --------------------------- */
+  const fetchEventsForRange = useCallback(
+    async (startISO = null, endISO = null) => {
+      const key = normalizeRangeKey(startISO, endISO, statusFilter, caseFilter, searchQ);
+      if (key === lastRangeKeyRef.current) return;
 
-    return {
-      id,
-      title,
-      start,
-      end,
-      extendedProps: {
-        raw: h,
-        status: h.status || h.state || "scheduled",
-        caseId: (h.case && (h.case._id || h.case.id)) || null,
-      },
-    };
-  }, []);
-
-  // Accept either YYYY-MM-DD or ISO or epoch passed in; when given YYYY-MM-DD keep it as-is.
-  const normalizeParam = (val) => {
-    if (!val) return null;
-    // already YYYY-MM-DD
-    if (typeof val === "string" && /^\d{4}-\d{2}-\d{2}$/.test(val)) return val;
-    const d = val instanceof Date ? val : new Date(val);
-    if (!isNaN(d.valueOf())) {
-      // prefer date-only for calendar APIs: YYYY-MM-DD
-      return d.toISOString().slice(0, 10);
-    }
-    return null;
-  };
-
-  // Fetch events for a visible range (sends date-only by default)
-  const fetchCalendarEvents = useCallback(
-    async (startParam = null, endParam = null) => {
-      // cancel previous
+      // abort previous
       try {
         if (abortRef.current) abortRef.current.abort();
-      } catch (e) {
-        // ignore
-      }
+      } catch {}
 
       const controller = new AbortController();
       abortRef.current = controller;
+      setLoading(true);
 
       try {
-        setLoading(true);
-
         const params = {};
-        const s = normalizeParam(startParam);
-        const e = normalizeParam(endParam);
-        if (s) params.start = s;
-        if (e) params.end = e;
-
-        // Use api wrapper (baseURL + auth should be configured in your utils/api)
-        const res = await api.get("/hearings/calendar", {
-          params,
-          signal: controller.signal,
-          withCredentials: true,
-        });
-
-        const raw = res?.data?.data || res?.data?.events || res?.data || [];
-        const arr = Array.isArray(raw) ? raw.map(formatHearing) : [];
-        setEvents(arr);
-      } catch (err) {
-        // ignore cancellations/abort to avoid noisy logs in dev (React StrictMode double-mount)
-        const isCanceled =
-          err?.name === "AbortError" || err?.name === "CanceledError" || err?.code === "ERR_CANCELED" || err?.message === "canceled";
-        if (isCanceled) {
-          return;
+        if (startISO && endISO) {
+          params.start = startISO.slice(0, 10);
+          params.end = endISO.slice(0, 10);
         }
+        if (statusFilter && statusFilter !== "All") params.status = statusFilter;
+        if (caseFilter) params.caseId = caseFilter;
+        if (searchQ) params.q = searchQ;
 
-        const backendMsg = err?.response?.data?.message || err?.response?.data?.error || err?.response?.data || null;
-        console.error("❌ Failed to fetch hearings calendar:", err, backendMsg);
-        if (backendMsg) toast.error(String(backendMsg));
-        else toast.error("Failed to load hearings calendar.");
+        const res = await api.get("/hearings/calendar", { params, signal: controller.signal });
+        const raw = safeData(res);
+        const arr = raw.map(formatHearing).filter(Boolean);
+        if (!mountedRef.current) return;
+        setEvents(arr);
+        lastRangeKeyRef.current = key;
+      } catch (err) {
+        const nonFatal = NON_FATAL_ABORT_NAMES.has(err?.name) || err?.code === "ERR_CANCELED" || err?.message === "canceled";
+        if (!nonFatal) {
+          console.error("Failed to fetch hearings:", err);
+          const msg = err?.response?.data?.message || err?.message || "Failed to load hearings.";
+          toast.error(String(msg));
+        }
       } finally {
-        setLoading(false);
+        if (mountedRef.current) setLoading(false);
         abortRef.current = null;
       }
     },
-    [formatHearing]
+    [statusFilter, caseFilter, searchQ]
   );
 
-  // Initialize socket + initial fetch
+  /* ---------------------------- Socket setup -------------------------- */
   useEffect(() => {
-    // Instead of calling without a range (which some backends reject), pick a sensible default:
-    // default => current month visible range: YYYY-MM-01 -> YYYY-MM-last
-    const now = new Date();
-    const firstDayUTC = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-    const lastDayUTC = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0));
-    const defaultStart = firstDayUTC.toISOString().slice(0, 10);
-    const defaultEnd = lastDayUTC.toISOString().slice(0, 10);
-
-    fetchCalendarEvents(defaultStart, defaultEnd);
+    mountedRef.current = true;
 
     const SOCKET_URL = import.meta.env.VITE_API_URL || import.meta.env.VITE_BACKEND_URL || "http://localhost:5000";
-    const token = (typeof window !== "undefined" && (localStorage.getItem("token") || (user && user.token))) || null;
-
+    const token = typeof window !== "undefined" && (localStorage.getItem("token") || null);
     const s = io(SOCKET_URL, {
       transports: ["websocket", "polling"],
       auth: token ? { token } : undefined,
-      reconnectionAttempts: 3,
+      reconnectionAttempts: 5,
     });
     socketRef.current = s;
 
-    if (user && (user._id || user.id)) {
-      s.emit("joinRoom", `user_${user._id || user.id}`);
-    }
+    s.on("connect_error", (err) => console.warn("Hearings socket connect_error:", err));
+    s.on("connect", () => {
+      if (user?.id || user?._id) {
+        try {
+          s.emit("joinRoom", `user_${user._id || user.id}`);
+        } catch {}
+      }
+    });
 
     s.on("hearing:new", (payload) => {
       try {
         const ev = formatHearing(payload);
-        // add or overwrite
+        if (!ev) return;
         setEvents((prev) => {
           const exists = prev.some((p) => String(p.id) === String(ev.id));
           if (exists) return prev.map((p) => (String(p.id) === String(ev.id) ? ev : p));
@@ -165,93 +192,220 @@ export default function HearingsCalendar({
         });
         toast.success(`New hearing: ${payload.title || "Untitled"}`);
       } catch (e) {
-        console.warn("Error handling hearing:new", e);
+        console.warn("hearing:new handler error", e);
       }
     });
 
     s.on("hearing:update", (payload) => {
       try {
         const ev = formatHearing(payload);
+        if (!ev) return;
         setEvents((prev) => prev.map((p) => (String(p.id) === String(ev.id) ? ev : p)));
         toast.success(`Hearing updated: ${payload.title || "Untitled"}`);
       } catch (e) {
-        console.warn("Error handling hearing:update", e);
+        console.warn("hearing:update handler error", e);
       }
     });
 
     s.on("hearing:deleted", (payload) => {
       const id = payload?._id || payload?.id || payload;
-      setEvents((prev) => prev.filter((e) => String(e.id) !== String(id)));
-      toast("Hearing removed");
-    });
-
-    s.on("connect_error", (err) => {
-      console.warn("HearingsCalendar socket connect_error:", err);
+      setEvents((prev) => prev.filter((p) => String(p.id) !== String(id)));
+      toast.success("Hearing removed");
     });
 
     return () => {
+      mountedRef.current = false;
       try {
-        if (debounceRef.current) {
-          clearTimeout(debounceRef.current);
-          debounceRef.current = null;
-        }
-        if (abortRef.current) {
-          abortRef.current.abort();
-          abortRef.current = null;
-        }
-        if (s) {
-          s.removeAllListeners();
-          s.disconnect();
-        }
-      } catch (e) {
-        // ignore cleanup errors
-      }
+        if (abortRef.current) abortRef.current.abort();
+        if (debounceRef.current) clearTimeout(debounceRef.current);
+        s.removeAllListeners();
+        s.disconnect();
+      } catch {}
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fetchCalendarEvents, user]);
+  }, [user]);
 
-  // Called by FullCalendar when the visible date range changes.
-  // Debounce to avoid rapid multiple requests while dragging/scrolling.
-  const handleDatesSet = (info) => {
-    // Use YYYY-MM-DD for calendar queries
-    const start = info.start ? info.start.toISOString().slice(0, 10) : null;
-    const end = info.end ? info.end.toISOString().slice(0, 10) : null;
+  /* ---------------------- initial month load ------------------------- */
+  useEffect(() => {
+    const now = new Date();
+    const first = new Date(now.getFullYear(), now.getMonth(), 1);
+    const last = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    fetchEventsForRange(toISO(first), toISO(last));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetchEventsForRange]);
 
+  /* ------------------------- calendar callbacks ---------------------- */
+  const handleDatesSet = (arg) => {
+    const sISO = arg.start ? toISO(arg.start) : null;
+    const eISO = arg.end ? toISO(arg.end) : null;
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
-      fetchCalendarEvents(start, end);
+      fetchEventsForRange(sISO, eISO);
       debounceRef.current = null;
     }, 300);
   };
 
+  const openHearing = (ev) => {
+    const raw = ev.extendedProps?.raw || null;
+    if (onSelect) return onSelect(raw || ev);
+    const qp = new URLSearchParams({ hearing: ev.id }).toString();
+    navigate(`/dashboard/hearings/page?${qp}`);
+  };
+
   const handleEventClick = (info) => {
-    const raw = info.event.extendedProps?.raw || null;
     try {
-      if (onSelect && typeof onSelect === "function") return onSelect(raw || { id: info.event.id });
-      const caseId = info.event.extendedProps?.caseId;
-      if (caseId) navigate(`/cases/${caseId}`);
-      else navigate(`/hearings/${info.event.id}`);
+      openHearing(info.event);
     } catch (err) {
-      console.error("Error in handleEventClick", err);
+      console.error("eventClick error", err);
     }
   };
 
   const handleDateClick = (info) => {
     try {
-      if (onCreate && typeof onCreate === "function") return onCreate(info.dateStr || info.date);
-      const dateParam = encodeURIComponent(info.dateStr || info.date?.toISOString?.());
-      navigate(`/hearings/new?date=${dateParam}`);
+      if (onCreate) return onCreate(info.dateStr || info.date);
+      const dateVal = info.dateStr || (info.date && info.date.toISOString().slice(0, 10));
+      const qp = new URLSearchParams({ date: dateVal }).toString();
+      navigate(`/dashboard/hearings/scheduler?${qp}`);
     } catch (err) {
-      console.error("Error in handleDateClick", err);
+      console.error("dateClick error", err);
     }
   };
 
+  /* ------------------------ drag & resize handlers ------------------- */
+  const patchHearingDate = async (id, patch) => {
+    const prev = events.find((e) => String(e.id) === String(id));
+    optimisticMapRef.current.set(id, prev);
+    setEvents((prevList) => prevList.map((e) => (String(e.id) === String(id) ? { ...e, ...(patch.start ? { start: patch.start } : {}), ...(patch.end ? { end: patch.end } : {}) } : e)));
+
+    try {
+      await api.patch(`/hearings/${id}`, patch);
+      optimisticMapRef.current.delete(id);
+      toast.success("Hearing rescheduled");
+    } catch (err) {
+      console.error("Reschedule failed:", err);
+      const message = err?.response?.data?.message || err?.message || "Failed to update hearing";
+      toast.error(message);
+      const original = optimisticMapRef.current.get(id);
+      if (original) {
+        setEvents((prevList) => prevList.map((e) => (String(e.id) === String(id) ? original : e)));
+        optimisticMapRef.current.delete(id);
+      }
+    }
+  };
+
+  const handleEventDrop = (info) => {
+    const id = info.event.id;
+    const start = info.event.start ? toISO(info.event.start) : null;
+    const end = info.event.end ? toISO(info.event.end) : null;
+    patchHearingDate(id, { start, end });
+  };
+
+  const handleEventResize = (info) => {
+    const id = info.event.id;
+    const start = info.event.start ? toISO(info.event.start) : null;
+    const end = info.event.end ? toISO(info.event.end) : null;
+    patchHearingDate(id, { start, end });
+  };
+
+  /* ---------------------------- deletion ----------------------------- */
+  const deleteHearing = async (id) => {
+    try {
+      await api.delete(`/hearings/${id}`);
+      setEvents((prev) => prev.filter((e) => String(e.id) !== String(id)));
+      toast.success("Hearing deleted");
+    } catch (err) {
+      console.error("Delete hearing failed", err);
+      const message = err?.response?.data?.message || err?.message || "Failed to delete hearing";
+      toast.error(message);
+    }
+  };
+
+  /* ------------------------- export visible range --------------------- */
+  const exportVisibleRange = async () => {
+    try {
+      const fc = calendarRef.current;
+      const apiObj = fc?.getApi ? fc.getApi() : null;
+      const view = apiObj?.view;
+      const start = view?.activeStart ? view.activeStart.toISOString().slice(0, 10) : null;
+      const end = view?.activeEnd ? view.activeEnd.toISOString().slice(0, 10) : null;
+      const params = new URLSearchParams({ start, end, format: "csv" }).toString();
+      const res = await api.get(`/hearings/export?${params}`, { responseType: "blob" });
+      const blob = new Blob([res.data], { type: "text/csv" });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `hearings_${start || "all"}_${end || "all"}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      toast.success("Export started");
+    } catch (err) {
+      console.error("Export failed", err);
+      const message = err?.response?.data?.message || err?.message || "Export failed";
+      toast.error(message);
+    }
+  };
+
+  /* --------------------------- render UI ----------------------------- */
   return (
     <div className="p-4">
-      <div className="flex items-center gap-3 mb-3">
-        <CalendarDays className="text-blue-600 w-5 h-5" />
-        <h2 className="text-lg font-semibold">Hearings Calendar</h2>
-        <div className="text-sm text-slate-500">Click a date to schedule. Click an event to open details.</div>
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <div className="flex items-center gap-3">
+          <CalendarDays className="text-blue-600 w-5 h-5" />
+          <div>
+            <h2 className="text-lg font-semibold">Hearings Calendar</h2>
+            <div className="text-sm text-slate-500">Click a date to schedule. Drag events to reschedule.</div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {showControls && (
+            <>
+              <input
+                aria-label="Search hearings"
+                placeholder="Search hearings..."
+                value={searchQ}
+                onChange={(e) => {
+                  setSearchQ(e.target.value);
+                  // clear last key so next datesSet triggers
+                  lastRangeKeyRef.current = "";
+                }}
+                className="px-3 py-1 border rounded-md text-sm"
+              />
+
+              <select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); lastRangeKeyRef.current = ""; }} className="px-2 py-1 border rounded-md text-sm">
+                <option>All</option>
+                <option value="scheduled">Scheduled</option>
+                <option value="in_progress">In Progress</option>
+                <option value="adjourned">Adjourned</option>
+                <option value="completed">Completed</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+
+              <button
+                title="Refresh"
+                className="p-2 rounded-md bg-slate-100 hover:bg-slate-200"
+                onClick={() => {
+                  lastRangeKeyRef.current = "";
+                  const now = new Date();
+                  const first = new Date(now.getFullYear(), now.getMonth(), 1);
+                  const last = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+                  fetchEventsForRange(toISO(first), toISO(last));
+                }}
+              >
+                <RefreshCw size={16} />
+              </button>
+            </>
+          )}
+
+          <button
+            title="Export visible range"
+            className="p-2 rounded-md bg-slate-100 hover:bg-slate-200 ml-2"
+            onClick={() => exportVisibleRange()}
+          >
+            <DownloadCloud size={16} />
+          </button>
+        </div>
       </div>
 
       <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="bg-white rounded-xl shadow p-3">
@@ -259,49 +413,81 @@ export default function HearingsCalendar({
           <div className="text-center py-8 text-slate-500">Loading calendar...</div>
         ) : (
           <FullCalendar
-            plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
+            ref={calendarRef}
+            plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin, listPlugin]}
             initialView={initialView}
             headerToolbar={{
               left: "prev,next today",
               center: "title",
-              right: "dayGridMonth,timeGridWeek,timeGridDay",
+              right: "dayGridMonth,timeGridWeek,timeGridDay,listWeek",
             }}
             height="70vh"
             events={events}
             eventClick={handleEventClick}
             dateClick={handleDateClick}
             datesSet={handleDatesSet}
+            editable={true}
+            eventDrop={handleEventDrop}
+            eventResize={handleEventResize}
+            eventDidMount={(info) => {
+              // attach a namespaced contextmenu that we can remove later
+              const handler = (e) => {
+                e.preventDefault();
+                setContextMenuState(info, e);
+              };
+              info.el.__fc_ctx_handler = handler;
+              info.el.addEventListener("contextmenu", handler);
+            }}
+            eventWillUnmount={(info) => {
+              // cleanup attached listener if any
+              try {
+                if (info.el && info.el.__fc_ctx_handler) {
+                  info.el.removeEventListener("contextmenu", info.el.__fc_ctx_handler);
+                  delete info.el.__fc_ctx_handler;
+                }
+              } catch {}
+            }}
             eventClassNames={(arg) => {
-              const status = arg.event.extendedProps?.status;
-              switch (status) {
-                case "scheduled":
-                  return "bg-blue-500 text-white border-0 rounded-md";
-                case "in_progress":
-                  return "bg-emerald-500 text-white border-0 rounded-md";
-                case "adjourned":
-                  return "bg-amber-500 text-white border-0 rounded-md";
-                case "completed":
-                  return "bg-green-500 text-white border-0 rounded-md";
-                case "cancelled":
-                  return "bg-slate-600 text-white border-0 rounded-md";
-                default:
-                  return "bg-indigo-400 text-white border-0 rounded-md";
-              }
+              const status = arg.event.extendedProps?.status || "scheduled";
+              const css = DEFAULT_STATUS_COLORS[status] || DEFAULT_STATUS_COLORS.tentative;
+              return `${css} text-white border-0 rounded-md`;
             }}
             eventContent={(arg) => (
               <div className="p-1 text-xs leading-tight">
                 <strong>{arg.event.title}</strong>
                 {arg.event.start && (
-                  <div className="flex items-center gap-1 opacity-80">
+                  <div className="flex items-center gap-1 opacity-90">
                     <Clock size={10} />
                     <span>{new Date(arg.event.start).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
                   </div>
                 )}
               </div>
             )}
+            longPressDelay={100}
           />
         )}
       </motion.div>
+
+      {/* legend */}
+      <div className="flex gap-3 mt-3 items-center text-sm">
+        {Object.keys(DEFAULT_STATUS_COLORS).map((k) => (
+          <div key={k} className="flex items-center gap-2">
+            <span className={`${DEFAULT_STATUS_COLORS[k]} w-3 h-3 rounded-sm inline-block`}></span>
+            <span className="capitalize">{k.replace("_", " ")}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
+
+  /* -------------------- local helpers inside component -------------------- */
+
+  // set context menu state helper (kept inline to access state setter)
+  function setContextMenuState(info, e) {
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      event: info.event,
+    });
+  }
 }

@@ -1,25 +1,45 @@
+// frontend/src/components/NewCaseModal.jsx
 /**
  * NewCaseModal.jsx
- * ------------------------------------------------------------
+ *
  * Production-ready modal for filing new cases.
- * - Defensive endpoint builder (avoids double /api)
- * - Fetch clients/respondents/users with parallel requests
- * - File uploads with progress
- * - Abort/cancel fetch on unmount/close
- * - Clearer logging & error toasts
- * ------------------------------------------------------------
+ * - Optional initialHearing when creating the case
+ * - Defensive endpoint/path builder to avoid double /api
+ * - Parallel fetch of users & clients with abort support
+ * - File uploads with progress + cancel support
+ * - Token fallback (useAuth token or localStorage)
+ * - Robust response parsing (handles { success, data } and raw arrays)
+ * - Clear success/error toasts and predictable onSuccess(createdCase)
  */
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { XCircle, UploadCloud, Users, FolderKanban, Info } from "lucide-react";
-import axios from "@/utils/axiosInstance";
+import axios from "@/utils/axiosInstance"; // centralized axios instance
 import toast from "react-hot-toast";
 import { useAuth } from "@/context/AuthContext";
 
-export default function NewCaseModal({ isOpen, onClose, onSuccess }) {
-  const { user, token } = useAuth();
+/* ------------------------------- Helpers ------------------------------- */
+/**
+ * Normalize axios response:
+ * - Accepts raw arrays/objects, { data }, or { data: { data, meta } }
+ * - Returns the most useful payload (array/object) or null
+ */
+const safeData = (res) => {
+  if (!res) return null;
+  if (res?.data === undefined) return res;
+  const body = res.data;
+  if (body === undefined) return res;
+  if (body?.data !== undefined) return body.data;
+  return body;
+};
 
+/* ----------------------------- Component ------------------------------- */
+export default function NewCaseModal({ isOpen, onClose, onSuccess }) {
+  const { user, token: authToken } = useAuth() || {};
+  const token = authToken || localStorage.getItem("token") || localStorage.getItem("authToken") || null;
+
+  /* Form state */
   const [formData, setFormData] = useState({
     title: "",
     description: "",
@@ -31,91 +51,96 @@ export default function NewCaseModal({ isOpen, onClose, onSuccess }) {
     sharedWith: [],
   });
 
+  /* Lists */
   const [clients, setClients] = useState([]);
   const [respondents, setRespondents] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
 
+  /* Upload & submit state */
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [showShareList, setShowShareList] = useState(false);
 
-  // Helper: build a request path that avoids double /api
+  /* Optional initial hearing */
+  const [scheduleHearing, setScheduleHearing] = useState(false);
+  const [hearingDate, setHearingDate] = useState(""); // datetime-local
+  const [hearingTitle, setHearingTitle] = useState("");
+  const [hearingNotes, setHearingNotes] = useState("");
+
+  /* Refs for abort/cancel */
+  const fetchControllerRef = useRef(null);
+  const uploadControllerRef = useRef(null);
+  const isMountedRef = useRef(false);
+
+  /* Build path (avoids double /api if axios baseURL already uses /api) */
   const buildPath = useCallback((pathWithoutApi) => {
-    // pathWithoutApi example: "users" or "upload/multiple" or "cases"
     const base = axios.defaults?.baseURL || "";
-    // Normalize trailing slash
     const baseEndsWithApi = !!base && base.replace(/\/+$/, "").endsWith("/api");
     return baseEndsWithApi ? `/${pathWithoutApi}` : `/api/${pathWithoutApi}`;
   }, []);
 
+  /* Fetch clients & users when modal opens */
   useEffect(() => {
-    if (!isOpen || !token) return;
+    if (!isOpen) return;
 
-    // prevent background scrolling while modal open
-    document.body.style.overflow = "hidden";
+    isMountedRef.current = true;
+    fetchControllerRef.current = new AbortController();
+    const signal = fetchControllerRef.current.signal;
+    const headers = token ? { Authorization: `Bearer ${token}` } : {};
 
-    const ac = new AbortController();
-    const signal = ac.signal;
+    const clientsPath = buildPath("users");
+    const usersPath = buildPath("users");
 
-    const fetchData = async () => {
+    (async function loadUsers() {
       try {
-        console.log("axios baseURL:", axios.defaults?.baseURL);
-        const headers = { Authorization: `Bearer ${token}` };
-
-        // choose endpoints defensively using buildPath
-        const clientsPath = buildPath("users");
-        const usersPath = buildPath("users");
-
-        // note: clients fetch uses role=client as param
         const [clientsRes, usersRes] = await Promise.all([
           axios.get(clientsPath, { params: { role: "client" }, headers, signal }),
           axios.get(usersPath, { headers, signal }),
         ]);
 
-        const clientsData = clientsRes?.data || [];
+        const clientsData = Array.isArray(safeData(clientsRes)) ? safeData(clientsRes) : [];
         setClients(clientsData);
+        setRespondents(clientsData); // fallback if no separate respondents endpoint
 
-        // If you have a separate respondents endpoint, swap this:
-        // const respondentsRes = await axios.get(buildPath('users'), { params: { role: 'respondent' }, headers, signal });
-        // setRespondents(respondentsRes?.data || []);
-        // For now reuse clients (as original file did)
-        setRespondents(clientsData);
-
-        const usersData = (usersRes?.data || []).filter((u) => u._id !== user?._id);
+        const usersDataRaw = safeData(usersRes);
+        const usersData = Array.isArray(usersDataRaw) ? usersDataRaw.filter((u) => String(u._id) !== String(user?._id)) : [];
         setAllUsers(usersData);
       } catch (err) {
-        if (signal.aborted) {
-          console.log("Fetch users aborted");
+        if (signal && signal.aborted) {
+          console.log("NewCaseModal: fetch aborted");
           return;
         }
         console.error("❌ Error loading users:", err, err?.response?.data);
-        toast.error(
-          err?.response?.data?.message ||
-            (err?.message ? `Failed to load users: ${err.message}` : "Failed to load users")
-        );
+        toast.error(err?.response?.data?.message || (err?.message ? `Failed to load users: ${err.message}` : "Failed to load users"));
       }
-    };
+    })();
 
-    fetchData();
+    // disable background scroll while modal open
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
 
     return () => {
-      ac.abort();
-      document.body.style.overflow = "auto";
+      isMountedRef.current = false;
+      if (fetchControllerRef.current) fetchControllerRef.current.abort();
+      document.body.style.overflow = prevOverflow || "auto";
     };
   }, [isOpen, token, user, buildPath]);
 
-  /* =======================================================
-     Handle Form Inputs
-  ======================================================= */
+  /* -------------------------- Input handlers -------------------------- */
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData((p) => ({ ...p, [name]: value }));
   };
 
-  /* =======================================================
-     Upload Attachments (via /api/upload/multiple)
-  ======================================================= */
+  const toggleShare = (id) => {
+    setFormData((p) => ({
+      ...p,
+      sharedWith: p.sharedWith.includes(id) ? p.sharedWith.filter((u) => u !== id) : [...p.sharedWith, id],
+    }));
+  };
+
+  /* ----------------------------- Upload ------------------------------ */
   const handleFileUpload = async (e) => {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
@@ -123,89 +148,140 @@ export default function NewCaseModal({ isOpen, onClose, onSuccess }) {
     setUploading(true);
     setUploadProgress(0);
 
+    // cancel previous upload if any
+    if (uploadControllerRef.current) {
+      try {
+        uploadControllerRef.current.abort();
+      } catch (err) {
+        /* ignore */
+      }
+    }
+    uploadControllerRef.current = new AbortController();
+    const signal = uploadControllerRef.current.signal;
+
+    const data = new FormData();
+    files.forEach((f) => data.append("files", f));
+
+    const path = buildPath("upload/multiple");
     try {
-      const data = new FormData();
-      files.forEach((file) => data.append("files", file));
-
-      const path = buildPath("upload/multiple");
-
       const res = await axios.post(path, data, {
         headers: {
-          Authorization: `Bearer ${token}`,
           "Content-Type": "multipart/form-data",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         onUploadProgress: (evt) => {
-          // guard against zero total
           const percent = evt.total ? Math.round((evt.loaded * 100) / evt.total) : 0;
           setUploadProgress(percent);
         },
+        signal, // modern axios supports AbortController signal
       });
 
-      const uploaded =
-        res?.data?.files?.map((f) => ({
-          name: f.name,
-          fileUrl: f.fileUrl,
-        })) || [];
+      // server might return res.data.files or res.data
+      let uploadedFiles = [];
+      if (res?.data?.files) uploadedFiles = res.data.files;
+      else uploadedFiles = safeData(res) || [];
 
-      setFormData((p) => ({
-        ...p,
-        attachments: [...p.attachments, ...uploaded],
+      const normalized = (Array.isArray(uploadedFiles) ? uploadedFiles : []).map((f) => ({
+        name: f.name || f.fileName || "file",
+        fileUrl: f.fileUrl || f.url || f.path || f.fileUrl,
       }));
 
-      toast.success(`${uploaded.length} file(s) uploaded successfully`);
+      setFormData((p) => ({ ...p, attachments: [...(p.attachments || []), ...normalized] }));
+      toast.success(`${normalized.length} file(s) uploaded`);
     } catch (err) {
-      console.error("❌ Upload failed:", err, err?.response?.data);
-      toast.error(err?.response?.data?.message || "Upload failed");
+      if (signal && signal.aborted) {
+        toast.error("Upload cancelled");
+      } else {
+        console.error("❌ Upload failed:", err, err?.response?.data);
+        toast.error(err?.response?.data?.message || err?.message || "Upload failed");
+      }
     } finally {
       setUploading(false);
       setUploadProgress(0);
+      uploadControllerRef.current = null;
     }
   };
 
-  /* =======================================================
-     Toggle shared user selection
-  ======================================================= */
-  const toggleShare = (id) => {
-    setFormData((p) => ({
-      ...p,
-      sharedWith: p.sharedWith.includes(id) ? p.sharedWith.filter((uid) => uid !== id) : [...p.sharedWith, id],
-    }));
+  /* Allow user to cancel ongoing upload */
+  const cancelUpload = () => {
+    if (uploadControllerRef.current) {
+      try {
+        uploadControllerRef.current.abort();
+        uploadControllerRef.current = null;
+      } catch (err) {
+        console.warn("Failed to cancel upload", err);
+      }
+    }
   };
 
-  /* =======================================================
-     Submit new case
-  ======================================================= */
+  /* ---------------------------- Validation --------------------------- */
+  const validateHearing = () => {
+    if (!scheduleHearing) return { ok: true };
+    if (!hearingDate) return { ok: false, message: "Please select a hearing date/time." };
+    const dt = new Date(hearingDate);
+    if (isNaN(dt)) return { ok: false, message: "Hearing date is invalid." };
+    if (!hearingTitle || !hearingTitle.trim()) return { ok: false, message: "Please provide a hearing title." };
+    return { ok: true };
+  };
+
+  /* ---------------------------- Submit Case ------------------------- */
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!formData.title.trim()) return toast.error("Case title is required");
-    if (!formData.clientId) return toast.error("Please select a client");
+    if (!formData.title || !formData.title.trim()) {
+      toast.error("Case title is required");
+      return;
+    }
+    if (!formData.clientId) {
+      toast.error("Please select a client");
+      return;
+    }
 
-    try {
-      setSubmitting(true);
-      const payload = {
-        ...formData,
-        filedBy: user?._id,
+    const hearingValidation = validateHearing();
+    if (!hearingValidation.ok) {
+      toast.error(hearingValidation.message);
+      return;
+    }
+
+    setSubmitting(true);
+
+    const payload = {
+      ...formData,
+      filedBy: user?._id,
+    };
+
+    if (scheduleHearing) {
+      payload.initialHearing = {
+        date: hearingDate,
+        title: hearingTitle,
+        description: hearingNotes || "",
       };
+    }
 
-      const path = buildPath("cases");
-      const { data } = await axios.post(path, payload, {
-        headers: { Authorization: `Bearer ${token}` },
+    const path = buildPath("cases");
+    try {
+      const res = await axios.post(path, payload, {
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
       });
 
+      const createdCase = res?.data?.data ?? res?.data ?? safeData(res);
       toast.success("✅ Case filed successfully");
-      onSuccess?.(data);
+
+      // return normalized created case to parent
+      onSuccess?.(createdCase);
+
       handleClose();
     } catch (err) {
       console.error("❌ Create case error:", err, err?.response?.data);
-      toast.error(err?.response?.data?.message || "Failed to create case");
+      const message = err?.response?.data?.message || err?.message || "Failed to create case";
+      toast.error(message);
     } finally {
       setSubmitting(false);
     }
   };
 
-  /* =======================================================
-     Close and reset
-  ======================================================= */
+  /* --------------------------- Reset & Close ------------------------ */
   const handleClose = () => {
     setFormData({
       title: "",
@@ -219,12 +295,34 @@ export default function NewCaseModal({ isOpen, onClose, onSuccess }) {
     });
     setUploadProgress(0);
     setShowShareList(false);
+
+    setScheduleHearing(false);
+    setHearingDate("");
+    setHearingTitle("");
+    setHearingNotes("");
+
+    // cancel any pending uploads or fetches
+    if (uploadControllerRef.current) {
+      try {
+        uploadControllerRef.current.abort();
+      } catch (err) {
+        /* ignore */
+      }
+      uploadControllerRef.current = null;
+    }
+    if (fetchControllerRef.current) {
+      try {
+        fetchControllerRef.current.abort();
+      } catch (err) {
+        /* ignore */
+      }
+      fetchControllerRef.current = null;
+    }
+
     onClose?.();
   };
 
-  /* =======================================================
-     Render
-  ======================================================= */
+  /* ------------------------------- Render --------------------------- */
   return (
     <AnimatePresence>
       {isOpen && (
@@ -240,8 +338,7 @@ export default function NewCaseModal({ isOpen, onClose, onSuccess }) {
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 50, opacity: 0 }}
           >
-            {/* Close */}
-            <button className="absolute top-3 right-3 text-gray-400 hover:text-gray-600" onClick={handleClose}>
+            <button aria-label="Close" className="absolute top-3 right-3 text-gray-400 hover:text-gray-600" onClick={handleClose}>
               <XCircle size={22} />
             </button>
 
@@ -268,12 +365,7 @@ export default function NewCaseModal({ isOpen, onClose, onSuccess }) {
                   <label className="text-sm font-medium text-gray-700 flex items-center gap-1">
                     <FolderKanban size={14} /> Category
                   </label>
-                  <select
-                    name="category"
-                    value={formData.category}
-                    onChange={handleChange}
-                    className="w-full border border-gray-300 rounded-lg px-2 py-2 mt-1 text-sm"
-                  >
+                  <select name="category" value={formData.category} onChange={handleChange} className="w-full border border-gray-300 rounded-lg px-2 py-2 mt-1 text-sm">
                     <option value="civil">Civil</option>
                     <option value="criminal">Criminal</option>
                     <option value="adr">ADR</option>
@@ -283,12 +375,7 @@ export default function NewCaseModal({ isOpen, onClose, onSuccess }) {
 
                 <div>
                   <label className="text-sm font-medium text-gray-700">Priority</label>
-                  <select
-                    name="priority"
-                    value={formData.priority}
-                    onChange={handleChange}
-                    className="w-full border border-gray-300 rounded-lg px-2 py-2 mt-1 text-sm"
-                  >
+                  <select name="priority" value={formData.priority} onChange={handleChange} className="w-full border border-gray-300 rounded-lg px-2 py-2 mt-1 text-sm">
                     <option value="low">Low</option>
                     <option value="medium">Medium</option>
                     <option value="high">High</option>
@@ -301,16 +388,11 @@ export default function NewCaseModal({ isOpen, onClose, onSuccess }) {
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="text-sm font-medium text-gray-700">Client</label>
-                  <select
-                    name="clientId"
-                    value={formData.clientId}
-                    onChange={handleChange}
-                    className="w-full border border-gray-300 rounded-lg px-2 py-2 mt-1 text-sm"
-                  >
+                  <select name="clientId" value={formData.clientId} onChange={handleChange} className="w-full border border-gray-300 rounded-lg px-2 py-2 mt-1 text-sm">
                     <option value="">Select client</option>
                     {clients.map((c) => (
                       <option key={c._id} value={c._id}>
-                        {c.name}
+                        {c.name || c.email || c._id}
                       </option>
                     ))}
                   </select>
@@ -318,19 +400,13 @@ export default function NewCaseModal({ isOpen, onClose, onSuccess }) {
 
                 <div>
                   <label className="text-sm font-medium text-gray-700 flex items-center gap-1">
-                    Respondent
-                    <Info size={12} className="text-gray-400" title="Opposing party or defendant" />
+                    Respondent <Info size={12} className="text-gray-400" title="Opposing party or defendant" />
                   </label>
-                  <select
-                    name="respondentId"
-                    value={formData.respondentId}
-                    onChange={handleChange}
-                    className="w-full border border-gray-300 rounded-lg px-2 py-2 mt-1 text-sm"
-                  >
+                  <select name="respondentId" value={formData.respondentId} onChange={handleChange} className="w-full border border-gray-300 rounded-lg px-2 py-2 mt-1 text-sm">
                     <option value="">Select respondent</option>
                     {respondents.map((r) => (
                       <option key={r._id} value={r._id}>
-                        {r.name}
+                        {r.name || r.email || r._id}
                       </option>
                     ))}
                   </select>
@@ -359,9 +435,14 @@ export default function NewCaseModal({ isOpen, onClose, onSuccess }) {
                   <input type="file" multiple onChange={handleFileUpload} className="hidden" disabled={uploading} />
                 </label>
 
-                {uploadProgress > 0 && uploading && (
-                  <div className="w-full bg-gray-200 rounded-full h-2 mt-1">
-                    <div className="bg-blue-500 h-2 rounded-full transition-all duration-300" style={{ width: `${uploadProgress}%` }} />
+                {uploading && uploadProgress > 0 && (
+                  <div className="flex items-center gap-2 mt-2">
+                    <div className="w-full bg-gray-200 rounded-full h-2">
+                      <div className="bg-blue-500 h-2 rounded-full transition-all duration-300" style={{ width: `${uploadProgress}%` }} />
+                    </div>
+                    <button type="button" onClick={cancelUpload} className="text-sm text-red-600 ml-2">
+                      Cancel
+                    </button>
                   </div>
                 )}
 
@@ -378,7 +459,7 @@ export default function NewCaseModal({ isOpen, onClose, onSuccess }) {
                 )}
               </div>
 
-              {/* Share */}
+              {/* Share list */}
               <div>
                 <button type="button" onClick={() => setShowShareList((p) => !p)} className="flex items-center gap-2 text-sm text-blue-600 mt-2">
                   <Users size={15} />
@@ -389,10 +470,37 @@ export default function NewCaseModal({ isOpen, onClose, onSuccess }) {
                   <div className="max-h-32 overflow-y-auto border border-gray-200 rounded-lg mt-2">
                     {allUsers.map((u) => (
                       <label key={u._id} className="flex items-center justify-between px-3 py-2 hover:bg-gray-50 text-sm cursor-pointer border-b last:border-none">
-                        <span>{u.name}</span>
+                        <span>{u.name || u.email}</span>
                         <input type="checkbox" checked={formData.sharedWith.includes(u._id)} onChange={() => toggleShare(u._id)} className="accent-blue-600 w-4 h-4" />
                       </label>
                     ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Initial hearing scheduling */}
+              <div className="pt-2 border-t">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={scheduleHearing} onChange={() => setScheduleHearing((p) => !p)} className="w-4 h-4" />
+                  <span className="text-sm">Schedule an initial hearing when filing (optional)</span>
+                </label>
+
+                {scheduleHearing && (
+                  <div className="grid gap-2 mt-2">
+                    <div>
+                      <label className="text-sm font-medium text-gray-700">Hearing Date & Time</label>
+                      <input type="datetime-local" value={hearingDate} onChange={(e) => setHearingDate(e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 mt-1 text-sm" />
+                    </div>
+
+                    <div>
+                      <label className="text-sm font-medium text-gray-700">Hearing Title</label>
+                      <input type="text" value={hearingTitle} onChange={(e) => setHearingTitle(e.target.value)} placeholder="e.g. Preliminary hearing" className="w-full border border-gray-300 rounded-lg px-3 py-2 mt-1 text-sm" />
+                    </div>
+
+                    <div>
+                      <label className="text-sm font-medium text-gray-700">Notes (optional)</label>
+                      <textarea value={hearingNotes} onChange={(e) => setHearingNotes(e.target.value)} rows={2} className="w-full border border-gray-300 rounded-lg px-3 py-2 mt-1 text-sm" placeholder="Details or meeting link" />
+                    </div>
                   </div>
                 )}
               </div>

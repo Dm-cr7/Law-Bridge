@@ -1,11 +1,13 @@
+// backend/server.js
 /**
  * backend/server.js
- * ------------------------------------------------------------
- * Relaxed CSP edition
+ * Relaxed CSP edition (patched)
  *
- * - CSP relaxed to allow data: fonts, Google Maps frames, and common https: sources
- * - Keeps Helmet defaults + other security middleware intact
- * - All other app features (routes, sockets, logging, graceful shutdown) preserved
+ * - Disables ETag for APIs to avoid 304 responses for dynamic JSON
+ * - Adds explicit no-cache headers for /api
+ * - CSP allows data: for fonts and common https: sources
+ * - Socket.IO configured with polling-first transports and explicit path
+ * - Keeps logging, rate-limiting, sanitizers, routes and graceful shutdown
  */
 
 import express from "express";
@@ -50,11 +52,13 @@ const TRUST_PROXY = process.env.TRUST_PROXY === "true" || NODE_ENV === "producti
 const SERVE_FRONTEND = process.env.SERVE_FRONTEND === "true" || NODE_ENV === "production";
 
 // Parse allowed origins reliably (avoid empty string entry)
+// Defaults include common dev ports for Vite (5173) and CRA (3000)
 const rawOrigins = process.env.CORS_ALLOWED_ORIGINS ?? "";
+const FALLBACK_ORIGINS = ["http://localhost:5173", "http://localhost:3000"];
 const ALLOWED_ORIGINS =
   rawOrigins.trim() !== ""
     ? rawOrigins.split(",").map((s) => s.trim())
-    : ["http://localhost:5173"];
+    : FALLBACK_ORIGINS;
 
 const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(__dirname, "uploads");
 const CLIENT_BUILD_DIR = process.env.CLIENT_BUILD_DIR || path.join(__dirname, "..", "frontend", "dist");
@@ -116,14 +120,19 @@ const morganStream = {
 const app = express();
 if (TRUST_PROXY) app.set("trust proxy", 1);
 
+// Disable ETag globally to avoid conditional GET 304 for API JSON
+app.set("etag", false);
+
 const server = http.createServer(app);
 
+// Socket.IO - use polling first then websocket (works better behind proxies)
+// and export path explicitly to avoid client/server path mismatch
 const io = new SocketServer(server, {
+  path: "/socket.io",
   cors: { origin: ALLOWED_ORIGINS, credentials: true },
-  transports: ["websocket", "polling"],
+  transports: ["polling", "websocket"],
 });
 
-// Make io available in controllers (NO CIRCULAR IMPORTS)
 app.set("io", io);
 
 /* -------------------------------------------------------------------------- */
@@ -132,7 +141,8 @@ app.set("io", io);
 io.on("connection", (socket) => {
   logger.info(`🟢 Socket connected → ${socket.id}`);
 
-  // Auto join personal room if userId is passed
+  // Backwards-compatible: allow token-based or query userId
+  // (application-level authentication should validate on server side)
   const userId = socket.handshake.query?.userId;
   if (userId) socket.join(`user_${userId}`);
 
@@ -154,51 +164,42 @@ io.on("error", (err) => logger.error("Socket.IO error:", err));
 /* 🧰 SECURITY & MIDDLEWARE */
 /* -------------------------------------------------------------------------- */
 /**
- * Relaxed CSP rationale:
- * - During local/dev and many deployments you want Google Maps embeds, data: fonts,
- *   and remote fonts/styles to load. We allow https: and data: where necessary.
- * - This is less strict than a minimal 'self' policy but still restricts sources
- *   to HTTPS origins and the configured ALLOWED_ORIGINS.
- *
- * If you need to tighten later, remove `data:` and restrict the https: entries to specific domains.
+ * Relaxed CSP:
+ * - Allows data: for fonts (base64 in dev), Google Maps frames, and HTTPS sources
+ * - You can tighten this later for production (remove data: or restrict https: domains)
  */
 
-const googleFrameOrigins = [
-  "https://www.google.com",
-  "https://maps.google.com",
-  "https://maps.gstatic.com",
-  "https://www.google.co.uk",
-  "https://www.google.co.ke",
-];
-
-// frame-src should include frontend hosts + Google Maps so <iframe src="https://www.google.com/maps..."> works
 const frameSrcOrigins = Array.from(
   new Set(["'self'", "https://www.google.com", "https://maps.google.com", "https://maps.gstatic.com", ...ALLOWED_ORIGINS])
 );
 
-// Compose directives with relaxed but reasonable allowances
-const imgSrc = ["'self'", "data:", "blob:", "https:" , ...ALLOWED_ORIGINS];
+const imgSrc = ["'self'", "data:", "blob:", "https:", ...ALLOWED_ORIGINS];
 const scriptSrc = ["'self'", "'unsafe-inline'", "https:", ...ALLOWED_ORIGINS];
 const styleSrc = ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https:", ...ALLOWED_ORIGINS];
 const fontSrc = ["'self'", "https://fonts.gstatic.com", "data:", "https:", ...ALLOWED_ORIGINS];
-const connectSrc = ["'self'", "https:", ...ALLOWED_ORIGINS]; // allows websocket/connect to same origin and configured origins
+const connectSrc = ["'self'", "https:", ...ALLOWED_ORIGINS];
 
+// ≫ replace your existing helmet(...) config with this block
 app.use(
   helmet({
     contentSecurityPolicy: {
       useDefaults: true,
       directives: {
         ...helmet.contentSecurityPolicy.getDefaultDirectives(),
-        "frame-src": frameSrcOrigins,
-        "img-src": imgSrc,
-        "script-src": scriptSrc,
-        "style-src": styleSrc,
-        "font-src": fontSrc,
-        "connect-src": connectSrc,
+
+        // allow frames (google maps), images (data:), styles, scripts, fonts (data:)
+        "frame-src": ["'self'", "https://www.google.com", "https://maps.google.com", "https://maps.gstatic.com", ...ALLOWED_ORIGINS],
+        "img-src": ["'self'", "data:", "blob:", "https:", ...ALLOWED_ORIGINS],
+        "script-src": ["'self'", "'unsafe-inline'", "https:", ...ALLOWED_ORIGINS],
+        "style-src": ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https:", ...ALLOWED_ORIGINS],
+        // ← IMPORTANT: allow data: for base64 fonts used in dev
+        "font-src": ["'self'", "https://fonts.gstatic.com", "data:", "https:", ...ALLOWED_ORIGINS],
+        "connect-src": ["'self'", "https:", ...ALLOWED_ORIGINS],
       },
     },
   })
 );
+
 
 // Response compression, cookie parsing, request logging
 app.use(compression());
@@ -213,12 +214,10 @@ app.use(express.urlencoded({ extended: true, limit: "25mb" }));
 app.use(mongoSanitize());
 app.use(xss());
 
-// CORS: allow configured origins (and no origin -> allow for server-side tools)
-// If you want to relax CORS further in dev, set CORS_ALLOWED_ORIGINS="*" in env (careful in prod)
+// CORS: allow configured origins (and allow undefined origin for non-browser tools)
 app.use(
   cors({
     origin: (origin, cb) => {
-      // allow non-browser requests (curl, server-to-server) when origin is undefined
       if (!origin) return cb(null, true);
       if (ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
       logger.warn(`CORS blocked: ${origin}`);
@@ -227,6 +226,22 @@ app.use(
     credentials: true,
   })
 );
+
+/* -------------------------------------------------------------------------- */
+/* 🚫 API / NO-CACHE MIDDLEWARE */
+/* -------------------------------------------------------------------------- */
+/**
+ * Ensure API responses are not cached and ETag conditional requests are avoided.
+ * Place this BEFORE route mounting so all /api responses get these headers.
+ */
+app.use("/api", (req, res, next) => {
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Expires", "0");
+  // ensure no-etag header remains
+  res.removeHeader("ETag");
+  next();
+});
 
 /* -------------------------------------------------------------------------- */
 /* 🚦 RATE LIMITERS */
@@ -256,6 +271,7 @@ app.use("/uploads", express.static(UPLOADS_DIR));
 /* -------------------------------------------------------------------------- */
 /* 🧭 API ROUTES */
 /* -------------------------------------------------------------------------- */
+// apply global limiter to /api root (after no-cache middleware)
 app.use("/api", globalLimiter);
 
 app.use("/api/auth", authLimiter, authRoutes);

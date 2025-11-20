@@ -1,20 +1,17 @@
-import { useState, useEffect } from "react";
-import { Link, NavLink } from "react-router-dom";
+import React, { useState, useEffect } from "react";
+import { Link, NavLink, useNavigate } from "react-router-dom";
 import { Menu, X, Home, Info, Star, Mail, LogIn } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import logo from "../../assets/logo.svg"; // ✅ Ensure this exists in /src/assets/
+import logo from "../../assets/logo.svg";
 
 /**
- * 🌤️ MobileNavBar.jsx — Bright Gradient Edition
- * ------------------------------------------------------------
- * Clean, elegant, and responsive top navigation.
- * Unified with the new bright LawBridge visual identity.
- * Sky → white gradients, soft shadows, and motion highlights.
+ * MobileNavBar.jsx — Bright Gradient Edition (updated: programmatic navigation)
  */
 
 const MobileNavBar = () => {
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const navigate = useNavigate();
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 15);
@@ -28,6 +25,17 @@ const MobileNavBar = () => {
     { name: "Features", to: "/features", icon: <Star size={18} /> },
     { name: "Contact", to: "/contact", icon: <Mail size={18} /> },
   ];
+
+  const handlePortalClick = () => {
+    // Close the drawer first
+    setOpen(false);
+
+    // NAVIGATE to the existing route (App.jsx defines /login)
+    navigate("/login");
+
+    // If your drawer exit animation blocks navigation, use a short delay:
+    // setTimeout(() => navigate("/login"), 180);
+  };
 
   return (
     <motion.nav
@@ -97,16 +105,16 @@ const MobileNavBar = () => {
               ))}
 
               {/* === Portal / Login Button === */}
-              <Link
-                to="/portal/login"
-                onClick={() => setOpen(false)}
+              <button
+                onClick={handlePortalClick}
                 className="flex items-center justify-center gap-2 py-3 rounded-full
                   bg-gradient-to-r from-sky-500 via-blue-600 to-indigo-600 text-white font-semibold
                   shadow-md shadow-blue-300/30 hover:scale-105 transition-all duration-300"
+                aria-label="Portal Login"
               >
                 <LogIn size={18} />
                 <span>Portal Login</span>
-              </Link>
+              </button>
             </div>
 
             {/* Animated Glow Line */}

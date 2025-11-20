@@ -1,16 +1,17 @@
 // backend/models/Case.js
 import mongoose from "mongoose";
-import path from "path";
 
 /**
- * Case Model — Production Ready
- * ------------------------------------------------------------
- * - Atomic caseNumber generation (counters collection) to avoid races
- * - Pre-validate hook ensures required fields are present before validation
- * - Metrics maintained automatically
- * - Soft-delete & restore with audit trail
- * - Utility: toPublicJSON() for safe API output
- * ------------------------------------------------------------
+ * Case Model — Production Ready (enhanced)
+ *
+ * Additions / Notes:
+ * - Added "paused" to status enum to support pause/resume in frontend.
+ * - Added `previousStatus` to store prior status (useful when pausing/resuming).
+ * - Added `setStatus(userId, newStatus, { force })` instance helper for robust status changes.
+ * - Added `updateCaseFields(updates, userId)` helper for PUT/patch semantics (saves history & metrics).
+ * - Hardened addHearing to save and return the newly created hearing.
+ * - Added virtuals: hearingsCount, attachmentsCount, notesCount for UI convenience.
+ * - Preserves backward compatibility with previous methods (softDelete, restore, etc.).
  */
 
 const { Schema } = mongoose;
@@ -29,7 +30,7 @@ const CounterSchema = new Schema(
 const Counter = mongoose.models.Counter || mongoose.model("Counter", CounterSchema);
 
 /* ===========================================================
-   SUB-SCHEMAS (unchanged semantics, compact)
+   SUB-SCHEMAS
    =========================================================== */
 const HearingSchema = new Schema(
   {
@@ -146,10 +147,14 @@ const caseSchema = new Schema(
         "closed",
         "rejected",
         "archived",
+        "paused", // NEW: supports pause/resume
       ],
       default: "draft",
       index: true,
     },
+    // previousStatus: useful for pause/resume flow
+    previousStatus: { type: String },
+
     priority: { type: String, enum: ["low", "medium", "high", "urgent"], default: "medium", index: true },
 
     // Dates
@@ -157,8 +162,8 @@ const caseSchema = new Schema(
     acceptedAt: { type: Date },
     closedAt: { type: Date },
 
-    // Hearings
-    hearingDate: { type: Date }, // legacy
+    // Hearings (embedded array for quick lookup)
+    hearingDate: { type: Date }, // legacy field for quick access
     hearings: [HearingSchema],
 
     // Attachments & evidence
@@ -169,7 +174,7 @@ const caseSchema = new Schema(
     notes: [NoteSchema],
     history: [HistoryEntrySchema],
 
-    // Team & sharing
+    // Team & sharing logs
     team: [TeamMemberSchema],
     sharedLogs: [SharedLogSchema],
 
@@ -177,7 +182,7 @@ const caseSchema = new Schema(
     court: { type: String, trim: true, index: true },
     jurisdiction: { type: String, trim: true, index: true },
 
-    // Analytics metrics
+    // Metrics — UI reads these often
     metrics: {
       totalDocuments: { type: Number, default: 0 },
       totalNotes: { type: Number, default: 0 },
@@ -193,7 +198,7 @@ const caseSchema = new Schema(
       by: { type: Schema.Types.ObjectId, ref: "User" },
     },
 
-    // Soft-delete & audit
+    // Audit
     updatedBy: { type: Schema.Types.ObjectId, ref: "User" },
     deletedAt: { type: Date, default: null },
     isDeleted: { type: Boolean, default: false, index: true },
@@ -206,18 +211,25 @@ const caseSchema = new Schema(
   }
 );
 
-/* ===========================================================
-   INDEXES
-   =========================================================== */
+/* INDEXES */
 caseSchema.index({ title: "text", description: "text" });
 caseSchema.index({ filedBy: 1, status: 1 });
 caseSchema.index({ client: 1, respondent: 1 });
 caseSchema.index({ category: 1, priority: 1 });
 caseSchema.index({ createdAt: -1 });
 
-/* ===========================================================
-   TRANSFORMERS & HELPERS
-   =========================================================== */
+/* VIRTUALS (convenience for frontend) */
+caseSchema.virtual("hearingsCount").get(function () {
+  return Array.isArray(this.hearings) ? this.hearings.length : 0;
+});
+caseSchema.virtual("attachmentsCount").get(function () {
+  return Array.isArray(this.attachments) ? this.attachments.length : 0;
+});
+caseSchema.virtual("notesCount").get(function () {
+  return Array.isArray(this.notes) ? this.notes.length : 0;
+});
+
+/* toJSON transform */
 caseSchema.set("toJSON", {
   transform(doc, ret) {
     delete ret.__v;
@@ -225,23 +237,18 @@ caseSchema.set("toJSON", {
   },
 });
 
-/**
- * toPublicJSON
- * returns a slim, safe representation for API responses
- */
+/* PUBLIC REPRESENTATION */
 caseSchema.methods.toPublicJSON = function () {
   const obj = this.toObject({ virtuals: true });
-  // hide internal flags
   delete obj.isDeleted;
   delete obj.deletedAt;
   return obj;
 };
 
 /* ===========================================================
-   HELPERS: atomic counter for case numbers
+   ATOMIC COUNTER HELPER
    =========================================================== */
 async function getNextCaseSequence() {
-  // Uses the Counter collection with id 'case' to atomically increment
   const counter = await Counter.findOneAndUpdate(
     { _id: "case" },
     { $inc: { seq: 1 } },
@@ -251,7 +258,7 @@ async function getNextCaseSequence() {
 }
 
 /* ===========================================================
-   PRE-VALIDATE HOOKS (generate caseNumber before validation)
+   PRE-VALIDATE HOOKS
    =========================================================== */
 caseSchema.pre("validate", async function (next) {
   try {
@@ -260,36 +267,32 @@ caseSchema.pre("validate", async function (next) {
 
     // Generate caseNumber only when missing
     if (!this.caseNumber) {
-      // Prefer patterned case number with advocate suffix when we have filedBy
       if (this.filedBy) {
-        // Try to allocate a sequence number atomically
-        const seq = await getNextCaseSequence(); // integer
-        // Build: ADV-<last4ofUser>-<YYYYMMDD>-<seq padded>
+        const seq = await getNextCaseSequence();
         const advocateIdSuffix = this.filedBy.toString().slice(-4).toUpperCase();
         const d = new Date();
         const y = d.getFullYear();
         const mm = (`0${d.getMonth() + 1}`).slice(-2);
         const dd = (`0${d.getDate()}`).slice(-2);
         const datePart = `${y}${mm}${dd}`;
-        const seqPart = `${seq}`.padStart(6, "0"); // zero-pad to 6 digits
+        const seqPart = `${seq}`.padStart(6, "0");
         this.caseNumber = `ADV-${advocateIdSuffix}-${datePart}-${seqPart}`;
       } else {
-        // Fallback: timestamp + random
         const now = Date.now().toString(36).toUpperCase();
         const rand = Math.random().toString(36).slice(2, 6).toUpperCase();
         this.caseNumber = `CASE-${now}-${rand}`;
       }
     }
 
-    // Default filedAt when status is 'filed' or filedAt missing
+    // Default filedAt when status is 'filed'
     if (!this.filedAt && this.status === "filed") {
       this.filedAt = new Date();
     }
 
-    // Metrics: simple derivations
+    // Metrics: derivations
     this.metrics.totalDocuments = (this.attachments || []).length || 0;
     this.metrics.totalNotes = (this.notes || []).length || 0;
-    this.metrics.lastActivityAt = new Date();
+    this.metrics.lastActivityAt = this.metrics.lastActivityAt || new Date();
 
     // durationDays if closedAt & filedAt exist
     if (this.closedAt && this.filedAt) {
@@ -304,8 +307,13 @@ caseSchema.pre("validate", async function (next) {
 });
 
 /* ===========================================================
-   INSTANCE METHODS (preserve and harden)
+   INSTANCE METHODS (enhancements)
    =========================================================== */
+
+/**
+ * addHistory(action, userId, note, meta)
+ * - existing behaviour, preserved
+ */
 caseSchema.methods.addHistory = async function (action, userId = null, note = "", meta = {}) {
   this.history = this.history || [];
   this.history.push({ action, performedBy: userId, note, meta, timestamp: new Date() });
@@ -315,6 +323,9 @@ caseSchema.methods.addHistory = async function (action, userId = null, note = ""
   return this.save();
 };
 
+/**
+ * addNote(content, userId, visibility)
+ */
 caseSchema.methods.addNote = async function (content, userId, visibility = "private") {
   if (!content || !userId) throw new Error("Note content and user required");
   this.notes = this.notes || [];
@@ -323,6 +334,9 @@ caseSchema.methods.addNote = async function (content, userId, visibility = "priv
   return this;
 };
 
+/**
+ * addAttachment(fileObj, userId)
+ */
 caseSchema.methods.addAttachment = async function (fileObj, userId) {
   this.attachments = this.attachments || [];
   const attachment = {
@@ -336,33 +350,50 @@ caseSchema.methods.addAttachment = async function (fileObj, userId) {
   };
   this.attachments.push(attachment);
   await this.addHistory("File Uploaded", userId, fileObj.name || "document", { fileUrl: fileObj.fileUrl });
-  // update metrics without forcing full save outside addHistory
   this.metrics = this.metrics || {};
   this.metrics.totalDocuments = (this.attachments || []).length;
   this.metrics.lastActivityAt = new Date();
   await this.save();
-  return this;
+  return attachment;
 };
 
+/**
+ * addHearing(hearingObj, userId)
+ * - Accepts date as string or Date; converts safely and saves the case (returns saved hearing)
+ */
 caseSchema.methods.addHearing = async function (hearingObj, userId) {
   this.hearings = this.hearings || [];
+
+  let dateVal = hearingObj.date;
+  if (typeof dateVal === "string") dateVal = new Date(dateVal);
+  if (!dateVal || isNaN(new Date(dateVal).valueOf())) {
+    throw new Error("Invalid hearing date");
+  }
+
   const h = {
-    date: hearingObj.date,
-    title: hearingObj.title,
-    description: hearingObj.description,
-    outcome: hearingObj.outcome,
+    date: new Date(dateVal),
+    title: hearingObj.title || "",
+    description: hearingObj.description || "",
+    outcome: hearingObj.outcome || "",
     addedBy: userId,
     createdAt: new Date(),
   };
+
   this.hearings.push(h);
   this.hearingDate = h.date;
   await this.addHistory("Hearing Added", userId, `${hearingObj.title || ""}`.trim());
-  return this;
+
+  // Save and return the last hearing (with _id)
+  await this.save();
+  return this.hearings && this.hearings.length ? this.hearings[this.hearings.length - 1] : h;
 };
 
+/**
+ * shareWith(userIdToShare, sharedById, permission)
+ */
 caseSchema.methods.shareWith = async function (userIdToShare, sharedById, permission = "view") {
   this.sharedWith = this.sharedWith || [];
-  if (!this.sharedWith.find((id) => id.toString() === userIdToShare.toString())) {
+  if (!this.sharedWith.find((id) => String(id) === String(userIdToShare))) {
     this.sharedWith.push(userIdToShare);
   }
   this.sharedLogs = this.sharedLogs || [];
@@ -371,32 +402,163 @@ caseSchema.methods.shareWith = async function (userIdToShare, sharedById, permis
   return this;
 };
 
+/**
+ * addParticipant(userId, addedBy)
+ */
 caseSchema.methods.addParticipant = async function (userId, addedBy = null) {
   this.participants = this.participants || [];
-  if (!this.participants.find((p) => p.toString() === userId.toString())) {
+  if (!this.participants.find((p) => String(p) === String(userId))) {
     this.participants.push(userId);
     await this.addHistory("Participant Added", addedBy, `Added participant ${userId}`);
   }
   return this;
 };
 
+/**
+ * removeParticipant(userId, removedBy)
+ */
 caseSchema.methods.removeParticipant = async function (userId, removedBy = null) {
-  this.participants = (this.participants || []).filter((p) => p.toString() !== userId.toString());
+  this.participants = (this.participants || []).filter((p) => String(p) !== String(userId));
   await this.addHistory("Participant Removed", removedBy, `Removed participant ${userId}`);
   return this;
 };
 
+/**
+ * softDelete(userId)
+ * - Mark soft deleted and add history (already present)
+ */
 caseSchema.methods.softDelete = async function (userId) {
   this.isDeleted = true;
   this.deletedAt = new Date();
   await this.addHistory("Soft Deleted", userId);
-  return this;
+  return this.save();
 };
 
+/**
+ * restore(userId)
+ * - Restore and add history (already present), optional: keep previousStatus
+ */
 caseSchema.methods.restore = async function (userId) {
   this.isDeleted = false;
   this.deletedAt = null;
   await this.addHistory("Restored", userId);
+  return this.save();
+};
+
+/**
+ * setStatus(userId, newStatus, opts = {})
+ * - Centralized status transition logic:
+ *   - records previousStatus when pausing
+ *   - updates relevant timestamps (filedAt, acceptedAt, closedAt)
+ *   - creates history entry and updates lastEvent and metrics
+ *   - opts: { force: boolean } to bypass some validation if needed
+ */
+caseSchema.methods.setStatus = async function (userId, newStatus, opts = {}) {
+  const allowed = [
+    "draft",
+    "filed",
+    "under_review",
+    "accepted",
+    "hearing_scheduled",
+    "hearing_in_progress",
+    "award_issued",
+    "resolved",
+    "closed",
+    "rejected",
+    "archived",
+    "paused",
+  ];
+
+  if (!allowed.includes(newStatus) && !opts.force) {
+    throw new Error(`Invalid status: ${newStatus}`);
+  }
+
+  const prev = this.status;
+
+  // store previousStatus for pause/resume flows
+  if (newStatus === "paused" && prev !== "paused") {
+    this.previousStatus = prev;
+  }
+
+  // if resuming from paused to another status, clear previousStatus
+  if (prev === "paused" && newStatus !== "paused") {
+    // optionally restore to previousStatus if newStatus === 'resume' — but controller should pass correct status
+    this.previousStatus = null;
+  }
+
+  // set date fields where appropriate
+  if (newStatus === "filed" && !this.filedAt) {
+    this.filedAt = new Date();
+  }
+  if (newStatus === "accepted" && !this.acceptedAt) {
+    this.acceptedAt = new Date();
+  }
+  if (newStatus === "closed") {
+    this.closedAt = new Date();
+  }
+
+  this.status = newStatus;
+  this.updatedBy = userId;
+  this.metrics = this.metrics || {};
+  this.metrics.lastActivityAt = new Date();
+
+  // Add human-friendly history
+  const note = `Status changed from ${prev || "unknown"} to ${newStatus}`;
+  this.history = this.history || [];
+  this.history.push({ action: "Status Changed", performedBy: userId, timestamp: new Date(), note, meta: { from: prev, to: newStatus } });
+
+  // update lastEvent snapshot
+  this.lastEvent = { action: "Status Changed", message: note, timestamp: new Date(), by: userId };
+
+  await this.save();
+  return this;
+};
+
+/**
+ * updateCaseFields(updates, userId)
+ * - Safe setter for PUT-like operations (applies allowed keys only, saves history)
+ * - Returns saved case
+ */
+caseSchema.methods.updateCaseFields = async function (updates = {}, userId = null) {
+  const allowed = [
+    "title",
+    "description",
+    "client",
+    "respondent",
+    "assignedTo",
+    "category",
+    "priority",
+    "court",
+    "jurisdiction",
+    "attachments",
+    "participants",
+    "team",
+    "arbitration",
+    "award",
+    "meta",
+  ];
+
+  let changedKeys = [];
+  Object.keys(updates).forEach((k) => {
+    if (allowed.includes(k)) {
+      // special handling for nested arrays to avoid overwriting incorrectly could be added
+      this[k] = updates[k];
+      changedKeys.push(k);
+    }
+  });
+
+  if (changedKeys.length) {
+    this.updatedBy = userId;
+    await this.addHistory("Case Updated", userId, `Updated: ${changedKeys.join(", ")}`);
+  }
+
+  // re-evaluate metrics
+  this.metrics = this.metrics || {};
+  this.metrics.totalDocuments = (this.attachments || []).length || 0;
+  this.metrics.totalNotes = (this.notes || []).length || 0;
+  this.metrics.lastActivityAt = new Date();
+
+  await this.save();
   return this;
 };
 
@@ -451,8 +613,5 @@ caseSchema.statics.findByAccess = function (userId, caseId) {
   ]);
 };
 
-/* ===========================================================
-   EXPORT
-   =========================================================== */
 const Case = mongoose.models.Case || mongoose.model("Case", caseSchema);
 export default Case;

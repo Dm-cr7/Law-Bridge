@@ -3,20 +3,24 @@ import mongoose from "mongoose";
 import Hearing from "../models/Hearing.js";
 import CaseModel from "../models/Case.js";
 import asyncHandler from "../middleware/asyncHandler.js";
+import { Parser } from "json2csv";
+
+/* ---------------------- Helpers ---------------------- */
 
 /**
- * Helper: safe io getter (avoid circular imports)
+ * getIo(req) - defensive socket getter
  */
 function getIo(req) {
   try {
-    return req.app && req.app.get && req.app.get("io");
-  } catch (err) {
+    return req.app && typeof req.app.get === "function" ? req.app.get("io") : null;
+  } catch {
     return null;
   }
 }
 
 /**
- * Helper: emit to rooms (defensive)
+ * emitToRooms(req, event, payload, rooms)
+ * - rooms: array of strings; if omitted emits globally
  */
 function emitToRooms(req, event, payload, rooms = []) {
   const io = getIo(req);
@@ -24,44 +28,80 @@ function emitToRooms(req, event, payload, rooms = []) {
   try {
     if (Array.isArray(rooms) && rooms.length) {
       rooms.forEach((r) => {
-        if (r) io.to(r).emit(event, payload);
+        try {
+          if (r && typeof io.to === "function") io.to(r).emit(event, payload);
+        } catch (e) {
+          // ignore single-room emit failures
+        }
       });
     } else {
       io.emit(event, payload);
     }
   } catch (err) {
-    // don't crash on emit failures
     console.warn("Emit failed:", err);
   }
 }
 
 /**
- * Create a new hearing
+ * buildRoomsFromHearing(hearing)
+ * - returns array of unique room ids to notify
+ */
+function buildRoomsFromHearing(hearing) {
+  const rooms = new Set();
+  if (!hearing) return [];
+  try {
+    if (hearing.case) rooms.add(`case_${String(hearing.case)}`);
+    if (hearing.arbitration) rooms.add(`arbitration_${String(hearing.arbitration)}`);
+    if (hearing.createdBy) rooms.add(`user_${String(hearing.createdBy)}`);
+
+    const addMembers = (arr) => {
+      if (!Array.isArray(arr)) return;
+      arr.forEach((u) => {
+        if (u && mongoose.Types.ObjectId.isValid(String(u))) rooms.add(`user_${String(u)}`);
+      });
+    };
+
+    const parts = hearing.participants || {};
+    addMembers(parts.advocates);
+    addMembers(parts.arbitrators);
+    addMembers(parts.clients);
+    addMembers(parts.respondents);
+  } catch (err) {
+    // ignore
+  }
+  return Array.from(rooms);
+}
+
+/* ---------------------- Controller actions ---------------------- */
+
+/**
+ * CREATE HEARING
  * POST /api/hearings
  */
 export const createHearing = asyncHandler(async (req, res) => {
   const {
     caseId,
     title,
-    description,
+    description = "",
     start,
     end,
     venue,
     meetingLink,
     participants = {},
     arbitration,
-    meta,
+    recurrence = null,
+    reminder = null,
+    meta = {},
+    status = "scheduled",
   } = req.body;
 
   if (!caseId || !title || !start) {
     return res.status(400).json({ success: false, message: "caseId, title and start date/time are required." });
   }
-
   if (!mongoose.Types.ObjectId.isValid(caseId)) {
     return res.status(400).json({ success: false, message: "Invalid caseId" });
   }
 
-  // validate date
   const startDate = new Date(start);
   if (isNaN(startDate)) return res.status(400).json({ success: false, message: "Invalid start date" });
 
@@ -75,43 +115,51 @@ export const createHearing = asyncHandler(async (req, res) => {
   const caseDoc = await CaseModel.findById(caseId).select("_id title");
   if (!caseDoc) return res.status(404).json({ success: false, message: "Case not found" });
 
-  const hearing = await Hearing.create({
+  const hearingPayload = {
     case: caseId,
-    arbitration: arbitration && mongoose.Types.ObjectId.isValid(arbitration) ? arbitration : null,
-    title,
-    description: description || "",
+    title: String(title).trim(),
+    description: String(description || ""),
     start: startDate,
     end: endDate,
     venue: venue || "To be determined",
     meetingLink: meetingLink || null,
     participants: participants || {},
-    createdBy: req.user._id,
+    arbitration: arbitration && mongoose.Types.ObjectId.isValid(arbitration) ? arbitration : null,
+    recurrence: recurrence || { freq: "none", interval: 1 },
+    reminder: reminder || { enabled: false, minutesBefore: 30 },
     meta: meta || {},
-  });
-
-  // Emit to relevant rooms: case_{id}, arbitration_{id}, user_{creator} and each participant user_* room
-  const rooms = [`case_${String(caseId)}`, `user_${String(req.user._id)}`];
-  if (hearing.arbitration) rooms.push(`arbitration_${String(hearing.arbitration)}`);
-
-  // add participant rooms (if any user ids present)
-  const addParticipantRooms = (arr) => {
-    if (!Array.isArray(arr)) return;
-    arr.forEach((u) => {
-      if (mongoose.Types.ObjectId.isValid(String(u))) rooms.push(`user_${String(u)}`);
-    });
+    createdBy: req.user._id,
+    status: status || "scheduled",
   };
-  addParticipantRooms(hearing.participants?.advocates);
-  addParticipantRooms(hearing.participants?.arbitrators);
-  addParticipantRooms(hearing.participants?.clients);
-  addParticipantRooms(hearing.participants?.respondents);
 
-  emitToRooms(req, "hearing:new", hearing.toObject(), Array.from(new Set(rooms)));
+  const created = await Hearing.create(hearingPayload);
 
-  res.status(201).json({ success: true, data: hearing });
+  // For legacy compatibility, try to attach to Case.hearings via model helper if it exists
+  try {
+    const c = await CaseModel.findById(caseId);
+    if (c && typeof c.addHearing === "function") {
+      await c.addHearing({ date: created.start, title: created.title, description: created.description }, req.user._id);
+    }
+  } catch (err) {
+    // non-fatal
+    console.warn("Failed to attach hearing to Case.hearings:", err?.message || err);
+  }
+
+  const populated = await Hearing.findById(created._id)
+    .populate("case", "title caseNumber")
+    .populate("participants.advocates participants.arbitrators participants.clients participants.respondents", "name email role")
+    .populate("createdBy", "name email role")
+    .lean();
+
+  // Notify interested rooms
+  const rooms = buildRoomsFromHearing(populated);
+  emitToRooms(req, "hearing:new", populated, rooms);
+
+  res.status(201).json({ success: true, data: populated });
 });
 
 /**
- * List hearings (with pagination and filters)
+ * GET HEARINGS (list / calendar)
  * GET /api/hearings
  */
 export const getHearings = asyncHandler(async (req, res) => {
@@ -120,12 +168,13 @@ export const getHearings = asyncHandler(async (req, res) => {
     arbitration,
     from,
     to,
-    participant, // user id to filter by membership
-    page = 1,
-    limit = 50,
+    participant,
     upcoming,
     status,
-    q, // free text on title/description
+    q,
+    page = 1,
+    limit = 50,
+    forCalendar = false,
   } = req.query;
 
   const query = { deletedAt: null };
@@ -146,13 +195,12 @@ export const getHearings = asyncHandler(async (req, res) => {
     }
   }
 
-  if (upcoming === "true") {
+  if (String(upcoming) === "true") {
     query.start = query.start || {};
     query.start.$gte = new Date();
   }
 
   if (participant && mongoose.Types.ObjectId.isValid(participant)) {
-    // participant membership in any of the participant arrays
     query.$or = [
       { "participants.advocates": participant },
       { "participants.arbitrators": participant },
@@ -160,44 +208,54 @@ export const getHearings = asyncHandler(async (req, res) => {
       { "participants.respondents": participant },
     ];
   } else {
-    // default: limit to hearings that include the requesting user or createdBy for non-admins
-    if (!req.user || !String(req.user.role).toLowerCase().includes("admin")) {
-      const uid = req.user && req.user._id;
-      if (uid) {
-        query.$or = [
-          { "participants.advocates": uid },
-          { "participants.arbitrators": uid },
-          { "participants.clients": uid },
-          { "participants.respondents": uid },
-          { createdBy: uid },
-        ];
-      }
+    // limit results for non-admins to hearings they are related to
+    if (req.user && !String(req.user.role).toLowerCase().includes("admin")) {
+      const uid = String(req.user._id);
+      query.$or = [
+        { "participants.advocates": uid },
+        { "participants.arbitrators": uid },
+        { "participants.clients": uid },
+        { "participants.respondents": uid },
+        { createdBy: uid },
+      ];
     }
   }
 
   if (q && typeof q === "string") {
-    query.$text = { $search: q }; // requires text index on title/description if you want full text
+    query.$text = { $search: q };
   }
 
   const p = Math.max(1, parseInt(page, 10) || 1);
-  const lim = Math.min(200, Math.max(1, parseInt(limit, 10) || 50));
+  const lim = Math.min(1000, Math.max(1, parseInt(limit, 10) || 50));
 
   const [items, total] = await Promise.all([
     Hearing.find(query)
       .sort({ start: 1 })
       .skip((p - 1) * lim)
       .limit(lim)
-      .populate("case", "title status")
+      .populate("case", "title caseNumber")
       .populate("participants.advocates participants.arbitrators participants.clients participants.respondents", "name email role")
       .lean(),
     Hearing.countDocuments(query),
   ]);
 
+  // calendar minimal shape
+  if (forCalendar === "true" || req.path?.includes("/calendar")) {
+    const events = items.map((h) => ({
+      id: h._id,
+      title: h.title,
+      start: h.start,
+      end: h.end,
+      extendedProps: { case: h.case, status: h.status, raw: h },
+    }));
+    return res.json({ success: true, data: events, meta: { total, page: p, limit: lim } });
+  }
+
   res.json({ success: true, data: items, meta: { total, page: p, limit: lim } });
 });
 
 /**
- * Get single hearing by id
+ * GET BY ID
  * GET /api/hearings/:id
  */
 export const getHearingById = asyncHandler(async (req, res) => {
@@ -205,13 +263,13 @@ export const getHearingById = asyncHandler(async (req, res) => {
   if (!mongoose.Types.ObjectId.isValid(id)) return res.status(400).json({ success: false, message: "Invalid id" });
 
   const hearing = await Hearing.findById(id)
-    .populate("case", "title status")
+    .populate("case", "title caseNumber")
     .populate("participants.advocates participants.arbitrators participants.clients participants.respondents", "name email role")
+    .populate("createdBy updatedBy", "name email role")
     .lean();
 
   if (!hearing || hearing.deletedAt) return res.status(404).json({ success: false, message: "Hearing not found" });
 
-  // Optionally enforce access: only participants, creator, or admin can view
   const uid = req.user && String(req.user._id);
   const isParticipant =
     (hearing.participants?.advocates || []).some((x) => String(x) === uid) ||
@@ -228,8 +286,8 @@ export const getHearingById = asyncHandler(async (req, res) => {
 });
 
 /**
- * Update hearing
- * PUT /api/hearings/:id
+ * UPDATE (PATCH/PUT)
+ * PATCH /api/hearings/:id
  */
 export const updateHearing = asyncHandler(async (req, res) => {
   const { id } = req.params;
@@ -238,7 +296,6 @@ export const updateHearing = asyncHandler(async (req, res) => {
   const hearing = await Hearing.findById(id);
   if (!hearing || hearing.deletedAt) return res.status(404).json({ success: false, message: "Hearing not found" });
 
-  // Basic authorization: only createdBy, participants, or admin can update
   const uid = req.user && String(req.user._id);
   const isParticipant =
     (hearing.participants?.advocates || []).some((x) => String(x) === uid) ||
@@ -246,19 +303,22 @@ export const updateHearing = asyncHandler(async (req, res) => {
     (hearing.participants?.clients || []).some((x) => String(x) === uid) ||
     (hearing.participants?.respondents || []).some((x) => String(x) === uid) ||
     String(hearing.createdBy) === uid;
-  if (!isParticipant && !(req.user && String(req.user.role).toLowerCase().includes("admin"))) {
+
+  const role = req.user && String(req.user.role).toLowerCase();
+  const privileged = req.user && ["admin", "advocate", "arbitrator"].includes(role);
+
+  if (!isParticipant && !privileged) {
     return res.status(403).json({ success: false, message: "Not authorized to update this hearing" });
   }
 
-  // Allowed updates
-  const allowed = ["title", "description", "start", "end", "venue", "meetingLink", "status", "participants", "meta"];
-  allowed.forEach((key) => {
-    if (Object.prototype.hasOwnProperty.call(req.body, key)) {
-      if (key === "start" || key === "end") {
-        const d = req.body[key] ? new Date(req.body[key]) : null;
-        if (d && !isNaN(d)) hearing[key] = d;
+  const allowed = ["title", "description", "start", "end", "venue", "meetingLink", "status", "participants", "meta", "recurrence", "reminder"];
+  allowed.forEach((k) => {
+    if (Object.prototype.hasOwnProperty.call(req.body, k)) {
+      if (k === "start" || k === "end") {
+        const d = req.body[k] ? new Date(req.body[k]) : null;
+        if (d && !isNaN(d)) hearing[k] = d;
       } else {
-        hearing[key] = req.body[key];
+        hearing[k] = req.body[k];
       }
     }
   });
@@ -266,27 +326,20 @@ export const updateHearing = asyncHandler(async (req, res) => {
   hearing.updatedBy = req.user._id;
   await hearing.save();
 
-  // emit updates to rooms
-  const rooms = [`case_${String(hearing.case)}`, `user_${String(hearing.createdBy)}`];
-  if (hearing.arbitration) rooms.push(`arbitration_${String(hearing.arbitration)}`);
-  const addParticipantRooms = (arr) => {
-    if (!Array.isArray(arr)) return;
-    arr.forEach((u) => {
-      if (mongoose.Types.ObjectId.isValid(String(u))) rooms.push(`user_${String(u)}`);
-    });
-  };
-  addParticipantRooms(hearing.participants?.advocates);
-  addParticipantRooms(hearing.participants?.arbitrators);
-  addParticipantRooms(hearing.participants?.clients);
-  addParticipantRooms(hearing.participants?.respondents);
+  const populated = await Hearing.findById(id)
+    .populate("case", "title caseNumber")
+    .populate("participants.advocates participants.arbitrators participants.clients participants.respondents", "name email role")
+    .populate("createdBy updatedBy", "name email role")
+    .lean();
 
-  emitToRooms(req, "hearing:update", hearing.toObject(), Array.from(new Set(rooms)));
+  const rooms = buildRoomsFromHearing(populated);
+  emitToRooms(req, "hearing:update", populated, rooms);
 
-  res.json({ success: true, data: hearing });
+  res.json({ success: true, data: populated });
 });
 
 /**
- * Soft delete hearing
+ * SOFT DELETE
  * DELETE /api/hearings/:id
  */
 export const deleteHearing = asyncHandler(async (req, res) => {
@@ -296,43 +349,251 @@ export const deleteHearing = asyncHandler(async (req, res) => {
   const hearing = await Hearing.findById(id);
   if (!hearing || hearing.deletedAt) return res.status(404).json({ success: false, message: "Hearing not found" });
 
-  // Authorization: only creator or admin or advocate can soft delete
   const uid = req.user && String(req.user._id);
   const isCreator = String(hearing.createdBy) === uid;
-  const isAdvocateOrAdmin = req.user && ["advocate", "admin", "arbitrator"].includes(String(req.user.role));
+  const role = req.user && String(req.user.role).toLowerCase();
+  const isPrivileged = req.user && ["admin", "advocate", "arbitrator"].includes(role);
 
-  if (!isCreator && !isAdvocateOrAdmin) {
+  if (!isCreator && !isPrivileged) {
     return res.status(403).json({ success: false, message: "Not authorized to delete this hearing" });
   }
 
   hearing.deletedAt = new Date();
+  hearing.updatedBy = req.user._id;
   await hearing.save();
 
-  emitToRooms(req, "hearing:deleted", { id: hearing._id }, [`case_${String(hearing.case)}`, `user_${String(hearing.createdBy)}`]);
+  const rooms = buildRoomsFromHearing(hearing);
+  emitToRooms(req, "hearing:deleted", { id: hearing._id }, rooms);
 
-  res.json({ success: true, message: "Hearing deleted (soft)" });
+  res.json({ success: true, message: "Hearing soft-deleted" });
 });
 
 /**
- * Add a note to a hearing
+ * RESTORE hearing (admin-only)
+ * POST /api/hearings/:id/restore
+ */
+export const restoreHearing = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  if (!mongoose.Types.ObjectId.isValid(id)) return res.status(400).json({ success: false, message: "Invalid id" });
+
+  const hearing = await Hearing.findById(id);
+  if (!hearing) return res.status(404).json({ success: false, message: "Hearing not found" });
+
+  if (!(req.user && String(req.user.role).toLowerCase().includes("admin"))) {
+    return res.status(403).json({ success: false, message: "Only admins can restore hearings" });
+  }
+
+  hearing.deletedAt = null;
+  hearing.updatedBy = req.user._id;
+  await hearing.save();
+
+  const rooms = buildRoomsFromHearing(hearing);
+  emitToRooms(req, "hearing:restored", hearing.toObject(), rooms);
+
+  res.json({ success: true, data: hearing });
+});
+
+/**
+ * ADD NOTE
  * POST /api/hearings/:id/notes
+ *
+ * NOTE: Hearing model in your repo didn't include an instance addNote helper,
+ * so we implement note push here and save. If you'd prefer, add an instance
+ * method on the Hearing model and call that instead.
  */
 export const addNote = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { content } = req.body;
-  if (!content || !content.trim()) return res.status(400).json({ success: false, message: "Note content required" });
-
+  if (!content || !String(content).trim()) return res.status(400).json({ success: false, message: "Note content required" });
   if (!mongoose.Types.ObjectId.isValid(id)) return res.status(400).json({ success: false, message: "Invalid id" });
 
   const hearing = await Hearing.findById(id);
   if (!hearing || hearing.deletedAt) return res.status(404).json({ success: false, message: "Hearing not found" });
 
-  const note = { content: String(content).trim(), createdBy: req.user._id };
+  // Authorization: only participants/creator/admin can add note
+  const uid = req.user && String(req.user._id);
+  const isParticipant =
+    (hearing.participants?.advocates || []).some((x) => String(x) === uid) ||
+    (hearing.participants?.arbitrators || []).some((x) => String(x) === uid) ||
+    (hearing.participants?.clients || []).some((x) => String(x) === uid) ||
+    (hearing.participants?.respondents || []).some((x) => String(x) === uid) ||
+    String(hearing.createdBy) === uid;
+
+  if (!isParticipant && !(req.user && String(req.user.role).toLowerCase().includes("admin"))) {
+    return res.status(403).json({ success: false, message: "Not authorized to add note to this hearing" });
+  }
+
+  const note = { content: String(content).trim(), createdBy: req.user._id, createdAt: new Date() };
+  hearing.notes = hearing.notes || [];
   hearing.notes.push(note);
+  hearing.updatedBy = req.user._id;
   await hearing.save();
 
-  // send note event
-  emitToRooms(req, "hearing:note", { hearingId: hearing._id, note }, [`case_${String(hearing.case)}`, `user_${String(hearing.createdBy)}`]);
+  const rooms = buildRoomsFromHearing(hearing);
+  emitToRooms(req, "hearing:note", { hearingId: hearing._id, note }, rooms);
 
   res.status(201).json({ success: true, data: note });
+});
+
+/**
+ * EXPORT CSV
+ * GET /api/hearings/export
+ */
+export const exportHearingsCSV = asyncHandler(async (req, res) => {
+  const { from, to, caseId, arbitration } = req.query;
+  const query = { deletedAt: null };
+  if (caseId && mongoose.Types.ObjectId.isValid(caseId)) query.case = caseId;
+  if (arbitration && mongoose.Types.ObjectId.isValid(arbitration)) query.arbitration = arbitration;
+  if (from || to) {
+    query.start = {};
+    if (from) {
+      const f = new Date(from);
+      if (!isNaN(f)) query.start.$gte = f;
+    }
+    if (to) {
+      const t = new Date(to);
+      if (!isNaN(t)) query.start.$lte = t;
+    }
+  }
+
+  const list = await Hearing.find(query).populate("case createdBy").lean();
+
+  const rows = list.map((h) => ({
+    id: h._id,
+    title: h.title,
+    caseNumber: h.case?.caseNumber || "",
+    caseTitle: h.case?.title || "",
+    start: h.start ? new Date(h.start).toISOString() : "",
+    end: h.end ? new Date(h.end).toISOString() : "",
+    venue: h.venue || h.meetingLink || "",
+    status: h.status,
+    createdBy: h.createdBy?.email || "",
+  }));
+
+  if (!rows.length) {
+    return res.status(200).json({ success: true, data: [], message: "No hearings found for the requested filter." });
+  }
+
+  try {
+    const fields = Object.keys(rows[0]);
+    const parser = new Parser({ fields });
+    const csv = parser.parse(rows);
+    res.header("Content-Type", "text/csv");
+    res.attachment(`hearings_export_${Date.now()}.csv`);
+    return res.send(csv);
+  } catch (err) {
+    // fallback CSV serializer
+    const header = Object.keys(rows[0]).join(",");
+    const csv = [header, ...rows.map((r) => Object.values(r).map((v) => `"${String(v || "").replace(/"/g, '""')}"`).join(","))].join("\n");
+    res.header("Content-Type", "text/csv");
+    res.attachment(`hearings_export_${Date.now()}.csv`);
+    return res.send(csv);
+  }
+});
+
+/* ---------------------- participant helpers ---------------------- */
+
+/**
+ * addHearingParticipant(req,res)
+ * Body: { group: 'advocates'|'arbitrators'|'clients'|'respondents', userId }
+ */
+export const addHearingParticipant = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { group, userId } = req.body;
+  if (!group || !userId) return res.status(400).json({ success: false, message: "group and userId required" });
+  if (!["advocates", "arbitrators", "clients", "respondents"].includes(group)) {
+    return res.status(400).json({ success: false, message: "Invalid participant group" });
+  }
+  if (!mongoose.Types.ObjectId.isValid(id) || !mongoose.Types.ObjectId.isValid(userId)) {
+    return res.status(400).json({ success: false, message: "Invalid id or userId" });
+  }
+
+  const hearing = await Hearing.findById(id);
+  if (!hearing || hearing.deletedAt) return res.status(404).json({ success: false, message: "Hearing not found" });
+
+  hearing.participants = hearing.participants || {};
+  hearing.participants[group] = hearing.participants[group] || [];
+  if (!hearing.participants[group].some((u) => String(u) === String(userId))) {
+    hearing.participants[group].push(userId);
+    hearing.updatedBy = req.user._id;
+    await hearing.save();
+
+    const populated = await Hearing.findById(id)
+      .populate("participants.advocates participants.arbitrators participants.clients participants.respondents", "name email role")
+      .lean();
+
+    // emit participant added
+    const rooms = buildRoomsFromHearing(populated);
+    emitToRooms(req, "hearing:participantAdded", { hearingId: id, group, userId }, rooms);
+
+    return res.json({ success: true, message: "Participant added", data: populated.participants });
+  }
+
+  res.status(200).json({ success: true, message: "Participant already present", data: hearing.participants });
+});
+
+/**
+ * removeHearingParticipant(req,res)
+ * Body: { group, userId }
+ */
+export const removeHearingParticipant = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { group, userId } = req.body;
+  if (!group || !userId) return res.status(400).json({ success: false, message: "group and userId required" });
+  if (!["advocates", "arbitrators", "clients", "respondents"].includes(group)) {
+    return res.status(400).json({ success: false, message: "Invalid participant group" });
+  }
+  if (!mongoose.Types.ObjectId.isValid(id) || !mongoose.Types.ObjectId.isValid(userId)) {
+    return res.status(400).json({ success: false, message: "Invalid id or userId" });
+  }
+
+  const hearing = await Hearing.findById(id);
+  if (!hearing || hearing.deletedAt) return res.status(404).json({ success: false, message: "Hearing not found" });
+
+  hearing.participants = hearing.participants || {};
+  hearing.participants[group] = (hearing.participants[group] || []).filter((u) => String(u) !== String(userId));
+  hearing.updatedBy = req.user._id;
+  await hearing.save();
+
+  const populated = await Hearing.findById(id)
+    .populate("participants.advocates participants.arbitrators participants.clients participants.respondents", "name email role")
+    .lean();
+
+  const rooms = buildRoomsFromHearing(populated);
+  emitToRooms(req, "hearing:participantRemoved", { hearingId: id, group, userId }, rooms);
+
+  res.json({ success: true, message: "Participant removed", data: populated.participants });
+});
+
+/* ---------------------- reminder scheduling (placeholder) ---------------------- */
+
+/**
+ * scheduleHearingReminder(req,res)
+ * Body: { enabled:boolean, minutesBefore:number }
+ *
+ * NOTE: This only stores reminder config on the hearing. Integrate a worker
+ * (BullMQ, Agenda, etc.) to actually enqueue/send reminders at hearing.reminder.nextReminderAt.
+ */
+export const scheduleHearingReminder = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { enabled = true, minutesBefore = 30 } = req.body;
+
+  if (!mongoose.Types.ObjectId.isValid(id)) return res.status(400).json({ success: false, message: "Invalid id" });
+  const hearing = await Hearing.findById(id);
+  if (!hearing || hearing.deletedAt) return res.status(404).json({ success: false, message: "Hearing not found" });
+
+  hearing.reminder = hearing.reminder || {};
+  hearing.reminder.enabled = Boolean(enabled);
+  hearing.reminder.minutesBefore = Number(minutesBefore) || 30;
+  hearing.reminder.nextReminderAt = hearing.reminder.enabled ? new Date(new Date(hearing.start).getTime() - hearing.reminder.minutesBefore * 60000) : null;
+  hearing.updatedBy = req.user._id;
+  await hearing.save();
+
+  // TODO: enqueue a background job here to dispatch the reminder at nextReminderAt
+  // Example: queue.add('hearing:reminder', { hearingId: id, ... }, { delay: nextReminderAt - Date.now() })
+
+  const rooms = buildRoomsFromHearing(hearing);
+  emitToRooms(req, "hearing:reminderUpdated", { hearingId: id, reminder: hearing.reminder }, rooms);
+
+  res.json({ success: true, message: "Reminder updated", data: hearing.reminder });
 });
