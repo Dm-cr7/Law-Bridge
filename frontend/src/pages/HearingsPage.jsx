@@ -1,7 +1,7 @@
 // frontend/src/pages/HearingsPage.jsx
 import React, { lazy, Suspense, useEffect, useState, useCallback, useRef } from "react";
 const HearingsCalendar = lazy(() => import("../components/HearingsCalendar.jsx")); // normalized path
-import HearingChatPanel from "@/components/arbitrator/HearingChatPanel";
+import HearingChatPanel from "@/components/hearing/HearingChatPanel.jsx";
 import HearingScheduler from "@/components/arbitrator/HearingScheduler";
 import { useAuth } from "@/context/AuthContext";
 import api from "@/utils/api";

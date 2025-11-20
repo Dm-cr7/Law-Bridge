@@ -1,4 +1,4 @@
-// frontend/src/components/hearing/HearingChatPanel.jsx
+// frontend/import VerifyEmail from "./pages/public/verifyEmail.jsx";
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { io } from "socket.io-client";
 import { useAuth } from "@/context/AuthContext";
