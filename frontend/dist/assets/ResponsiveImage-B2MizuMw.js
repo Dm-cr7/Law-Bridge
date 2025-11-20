@@ -1,1 +1,0 @@
-import{j as m}from"./index-DX-5XR_r.js";function f({src:i,alt:n,className:a="",width:o,height:e,priority:r=!1,style:t={}}){const g=r?"eager":"lazy",s={};return o&&(s.width=o),e&&(s.height=e),m.jsx("img",{src:i,alt:n,loading:g,decoding:"async",className:a,style:t,...s})}export{f as R};
