@@ -1,6 +1,7 @@
 // frontend/src/pages/HearingsPage.jsx
 import React, { lazy, Suspense, useEffect, useState, useCallback, useRef } from "react";
-import HearingChatPanel from "@/components/hearing/HearingChatPanel";
+const HearingsCalendar = lazy(() => import("../components/HearingsCalendar.jsx")); // normalized path
+import HearingChatPanel from "@/components/arbitrator/HearingChatPanel";
 import HearingScheduler from "@/components/arbitrator/HearingScheduler";
 import { useAuth } from "@/context/AuthContext";
 import api from "@/utils/api";
@@ -10,15 +11,12 @@ import { motion } from "framer-motion";
 import { CalendarDays, List, PlusCircle, Trash2, Edit2, X } from "lucide-react";
 import { toast } from "sonner";
 
-// Lazy import using project alias (ensures correct resolution)
-const HearingsCalendar = lazy(() => import("@/components/HearingsCalendar.jsx"));
-
 const SOCKET_ORIGIN = (import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/+$/, "");
 const PAGE_LIMIT = 25;
 
 export default function HearingsPage() {
   const { user } = useAuth() || {};
-  const socketRef = useRef(null);
+  const [socket, setSocket] = useState(null);
 
   const [hearings, setHearings] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -30,94 +28,69 @@ export default function HearingsPage() {
   const [editing, setEditing] = useState(false);
   const [noteText, setNoteText] = useState("");
 
-  // controllers for aborting outstanding requests
+  // refs for abort controllers & stable data
   const controllersRef = useRef([]);
   const hearingsRef = useRef([]);
   hearingsRef.current = hearings;
 
-  // Robust helper to detect cancellation or aborted request.
-  const isCancelError = (err) => {
-    if (!err) return false;
-    // axios might provide an Error-like object
-    if (err?.code === "ERR_CANCELED" || err?.name === "CanceledError" || err?.name === "AbortError") return true;
-    // your api.js sometimes rejects with error.response (plain object)
-    if (err?.status === 0) return true;
-    if (typeof err === "string" && err.toLowerCase().includes("canceled")) return true;
-    if (err?.message && err.message.toLowerCase().includes("canceled")) return true;
-    return false;
-  };
+  // token detection (be resilient to different storage keys)
+  const token = typeof window !== "undefined" && (localStorage.getItem("authToken") || localStorage.getItem("token") || sessionStorage.getItem("authToken") || sessionStorage.getItem("token"));
 
-  // Normalize error message from various shapes (Error or axios response object)
-  const extractErrorMsg = (err) => {
-    if (!err) return "Unknown error";
-    if (typeof err === "string") return err;
-    if (err?.message) return err.message;
-    if (err?.data?.message) return err.data.message;
-    if (err?.message === undefined && err?.status && err?.data) {
-      // likely an axios response object passed by your interceptor
-      return err.data?.message || JSON.stringify(err.data) || `HTTP ${err.status}`;
-    }
-    return JSON.stringify(err);
-  };
+  // ===========================
+  // Fetch hearings (page)
+  // ===========================
+  const fetchHearings = useCallback(
+    async (p = 1) => {
+      try {
+        controllersRef.current.forEach((c) => c.abort?.());
+      } catch (e) {}
+      const ctrl = new AbortController();
+      controllersRef.current = [ctrl];
 
-  // Fetch hearings page (safe)
-  const fetchHearings = useCallback(async (p = 1) => {
-    // abort previous controllers
-    try {
-      controllersRef.current.forEach((c) => c.abort?.());
-    } catch (e) {}
-    const ctrl = new AbortController();
-    controllersRef.current = [ctrl];
+      setLoading(true);
+      try {
+        // api baseURL already contains /api
+        const res = await api.get("/hearings", {
+          params: { page: p, limit: PAGE_LIMIT },
+          signal: ctrl.signal,
+        });
 
-    setLoading(true);
-    try {
-      // api.baseURL already includes /api
-      const res = await api.get("/hearings", {
-        params: { page: p, limit: PAGE_LIMIT },
-        signal: ctrl.signal,
-      });
-
-      const list = Array.isArray(res?.data) ? res.data : res?.data?.data ?? res?.data ?? [];
-      if (!Array.isArray(list)) {
-        setHearings([]);
-        setHasMore(false);
-        setPage(p);
-      } else {
+        // normalise payload shape
+        const list = Array.isArray(res.data) ? res.data : res.data?.data ?? [];
         setHearings(list);
         setHasMore(list.length === PAGE_LIMIT);
         setPage(p);
+      } catch (err) {
+        const isCanceled = err?.code === "ERR_CANCELED" || (err?.message && err.message.toLowerCase().includes("canceled"));
+        if (!isCanceled) {
+          console.error("Fetch hearings failed", err);
+          toast.error("Failed to load hearings");
+        }
+      } finally {
+        setLoading(false);
       }
-    } catch (err) {
-      if (!isCancelError(err)) {
-        console.error("Fetch hearings failed", err);
-        toast.error("Failed to load hearings");
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+    },
+    []
+  );
 
-  // Mount: initial fetch + socket setup
+  // ===========================
+  // Socket setup (mount once)
+  // ===========================
   useEffect(() => {
     fetchHearings(1);
 
-    // socket auth token sources - be tolerant
-    const token = localStorage.getItem("authToken") || localStorage.getItem("token") || sessionStorage.getItem("authToken") || sessionStorage.getItem("token");
-
-    // create socket and keep it on a ref for cleanup
     const s = io(SOCKET_ORIGIN, {
       transports: ["websocket", "polling"],
       auth: token ? { token } : undefined,
       reconnectionAttempts: 5,
       timeout: 20000,
     });
-    socketRef.current = s;
 
     s.on("connect", () => {
       if (user && (user._id || user.id)) {
         try {
           s.emit("joinRoom", `user_${user._id || user.id}`);
-        } catch (e) {}
+        } catch {}
       }
     });
 
@@ -125,7 +98,7 @@ export default function HearingsPage() {
       setHearings((prev) => {
         const exists = prev.some((x) => String(x._id) === String(h._id));
         if (exists) return prev.map((x) => (String(x._id) === String(h._id) ? h : x));
-        return [h, ...prev].sort((a, b) => new Date(b.start || b.date || 0) - new Date(a.start || a.date || 0));
+        return [h, ...prev].sort((a, b) => new Date(b.date || b.start || 0) - new Date(a.date || a.start || 0));
       });
       toast.success(`New hearing scheduled: ${h.title || "Untitled"}`);
     });
@@ -135,16 +108,16 @@ export default function HearingsPage() {
       if (selected && String(selected._id) === String(h._id)) setSelected(h);
     });
 
-    s.on("hearing:deleted", (payload) => {
-      // payload may be { id } or { _id } or id itself
-      const id = (payload && (payload._id || payload.id)) || payload;
-      setHearings((prev) => prev.filter((x) => String(x._id) !== String(id)));
-      if (selected && String(selected._id) === String(id)) setSelected(null);
+    s.on("hearing:deleted", ({ _id }) => {
+      setHearings((prev) => prev.filter((x) => String(x._id) !== String(_id)));
+      if (selected && String(selected._1d) === String(_id)) setSelected(null);
     });
 
     s.on("connect_error", (err) => {
       console.warn("Socket connect_error:", err?.message || err);
     });
+
+    setSocket(s);
 
     return () => {
       try {
@@ -152,30 +125,66 @@ export default function HearingsPage() {
         s.off("hearing:update");
         s.off("hearing:deleted");
         s.disconnect();
-      } catch (e) {}
-      // abort outstanding fetches
-      try {
-        controllersRef.current.forEach((c) => c.abort?.());
-      } catch (e) {}
+      } catch {}
+      controllersRef.current.forEach((c) => c.abort?.());
       controllersRef.current = [];
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, fetchHearings]);
+  }, [user]);
 
-  // load single hearing details
-  const loadHearingDetails = useCallback(async (id) => {
-    if (!id) return;
-    try {
-      const res = await api.get(`/hearings/${id}`);
-      const payload = res?.data?.data ?? res?.data ?? null;
-      setSelected(payload);
-    } catch (err) {
-      console.error("Failed to load hearing details", err);
-      toast.error(extractErrorMsg(err) || "Failed to load hearing details");
-    }
-  }, []);
+  // ===========================
+  // Load single hearing details (robust & 403-aware)
+  // ===========================
+  const loadHearingDetails = useCallback(
+    async (id) => {
+      if (!id) {
+        setSelected(null);
+        return;
+      }
 
-  // delete (soft)
+      // quick local fallback: if we already have the object in list, use it as summary first
+      const local = hearingsRef.current.find((h) => String(h._id) === String(id));
+      if (local) {
+        setSelected((prev) => ({ ...(prev || {}), ...local, _localSummary: true }));
+      } else {
+        setSelected(null); // clear while loading
+      }
+
+      try {
+        const res = await api.get(`/hearings/${id}`);
+        const payload = res.data?.data ?? res.data;
+        setSelected(payload);
+      } catch (err) {
+        // Normalize various Axios shapes
+        const status = err?.response?.status ?? err?.status ?? (err?.code === "ERR_BAD_REQUEST" ? 400 : undefined);
+
+        if (status === 403) {
+          // Not authorized — show friendly message, keep a read-only summary if available
+          toast.error("Not authorized to view this hearing");
+          // If we already set local summary, keep it; else build a tiny safe summary
+          if (!local) {
+            setSelected({ _id: id, title: "Private hearing", status: "Private", description: "", _readOnly: true });
+          }
+          return;
+        }
+
+        console.error("Failed to load hearing details", err);
+        toast.error("Failed to load hearing details");
+      }
+    },
+    []
+  );
+
+  // wrapper used by calendar/list clicks
+  const onSelectFromList = (h) => {
+    if (!h) return;
+    setSelected(h);
+    loadHearingDetails(h._id || h.id);
+  };
+
+  // ===========================
+  // Delete hearing (soft)
+  // ===========================
   const handleDelete = async (id) => {
     if (!confirm("Cancel this hearing?")) return;
     const backup = hearingsRef.current;
@@ -188,33 +197,35 @@ export default function HearingsPage() {
     } catch (err) {
       console.error("Delete failed", err);
       setHearings(backup);
-      toast.error(extractErrorMsg(err) || "Failed to cancel hearing");
+      toast.error("Failed to cancel hearing");
     }
   };
 
-  // update hearing
+  // ===========================
+  // Update hearing
+  // ===========================
   const handleUpdate = async (id, updates) => {
     try {
       const res = await api.put(`/hearings/${id}`, updates);
-      const updated = res?.data?.data ?? res?.data ?? null;
-      if (updated) {
-        setHearings((prev) => prev.map((h) => (String(h._id) === String(id) ? updated : h)));
-        setSelected(updated);
-      }
+      const updated = res.data?.data ?? res.data;
+      setHearings((prev) => prev.map((h) => (String(h._id) === String(id) ? updated : h)));
+      setSelected(updated);
       toast.success("Updated successfully");
     } catch (err) {
       console.error("Update failed", err);
-      toast.error(extractErrorMsg(err) || "Update failed");
+      toast.error("Update failed");
     }
   };
 
-  // add note
+  // ===========================
+  // Add note
+  // ===========================
   const addNote = async () => {
     if (!noteText.trim() || !selected) return;
     const temp = {
       _id: `tmp-${Date.now()}`,
       content: noteText.trim(),
-      createdBy: { name: user?.name || user?.email || "You" },
+      createdBy: { name: user?.name || user?.email },
       createdAt: new Date().toISOString(),
       _optimistic: true,
     };
@@ -223,22 +234,16 @@ export default function HearingsPage() {
 
     try {
       const res = await api.post(`/hearings/${selected._id}/notes`, { content: temp.content });
-      const saved = res?.data?.data ?? res?.data ?? null;
-      if (saved) {
-        setSelected((s) => ({ ...s, notes: (s.notes || []).map((n) => (String(n._id).startsWith("tmp-") ? saved : n)) }));
-      }
+      const saved = res.data?.data ?? res.data;
+      setSelected((s) => ({ ...s, notes: s.notes.map((n) => (String(n._id).startsWith("tmp-") ? saved : n)) }));
     } catch (err) {
       console.error("Add note failed", err);
-      toast.error(extractErrorMsg(err) || "Failed to add note");
+      toast.error("Failed to add note");
       loadHearingDetails(selected._id);
     }
   };
 
-  const onSelectFromList = (h) => {
-    setSelected(h);
-    loadHearingDetails(h._id);
-  };
-
+  // =========================== render ===========================
   return (
     <div className="min-h-screen p-6 bg-slate-50">
       <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -262,7 +267,7 @@ export default function HearingsPage() {
 
         {/* Left: Calendar */}
         <div className="lg:col-span-6 bg-white rounded-xl shadow p-4">
-          <Suspense fallback={<div className="text-center py-8">Loading calendar...</div>}>
+          <Suspense fallback={<div>Loading calendar…</div>}>
             <HearingsCalendar onSelect={onSelectFromList} />
           </Suspense>
         </div>
@@ -274,16 +279,20 @@ export default function HearingsPage() {
           ) : (
             <ul className="space-y-2">
               {hearings.map((h) => (
-                <li key={h._id} onClick={() => onSelectFromList(h)} className={`p-3 rounded border cursor-pointer ${selected?._id === h._id ? "bg-blue-50 border-blue-300" : "hover:bg-slate-50"}`}>
+                <li
+                  key={h._id}
+                  onClick={() => onSelectFromList(h)}
+                  className={`p-3 rounded border cursor-pointer ${selected?._id === h._id ? "bg-blue-50 border-blue-300" : "hover:bg-slate-50"}`}
+                >
                   <div className="font-medium">{h.title}</div>
-                  <div className="text-xs text-slate-500">{h.start ? format(new Date(h.start || h.date), "PPP p") : "TBD"}</div>
+                  <div className="text-xs text-slate-500">{h.date ? format(new Date(h.date || h.start), "PPP p") : "TBD"}</div>
                 </li>
               ))}
             </ul>
           )}
 
           <div className="mt-4 flex justify-between">
-            <button disabled={page <= 1} onClick={() => fetchHearings(Math.max(1, page - 1))} className="px-3 py-1 bg-slate-100 rounded">
+            <button disabled={page <= 1} onClick={() => fetchHearings(page - 1)} className="px-3 py-1 bg-slate-100 rounded">
               Prev
             </button>
             <button disabled={!hasMore} onClick={() => fetchHearings(page + 1)} className="px-3 py-1 bg-slate-100 rounded">
@@ -316,7 +325,7 @@ export default function HearingsPage() {
                 <div className="max-h-32 overflow-auto space-y-2">
                   {(selected.notes || []).map((n) => (
                     <div key={n._id} className="bg-slate-50 p-2 rounded">
-                      <div className="text-xs text-slate-600">{n.createdBy?.name} – {format(new Date(n.createdAt), "PPP p")}</div>
+                      <div className="text-xs text-slate-600">{n.createdBy?.name} – {n.createdAt ? format(new Date(n.createdAt), "PPP p") : ""}</div>
                       <div className="text-sm">{n.content}</div>
                     </div>
                   ))}
@@ -344,7 +353,7 @@ export default function HearingsPage() {
               <button onClick={() => setShowScheduler(false)} className="p-1 bg-slate-200 rounded"><X size={16} /></button>
             </div>
 
-            <HearingScheduler arbitrationId={null} socket={socketRef.current} />
+            <HearingScheduler arbitrationId={null} socket={socket} />
           </div>
         </Modal>
       )}
