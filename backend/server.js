@@ -51,17 +51,35 @@ const MONGO_URI = process.env.MONGO_URI || "mongodb://localhost:27017/legal";
 const TRUST_PROXY = process.env.TRUST_PROXY === "true" || NODE_ENV === "production";
 const SERVE_FRONTEND = process.env.SERVE_FRONTEND === "true" || NODE_ENV === "production";
 
-// Parse allowed origins reliably (avoid empty string entry)
-// Defaults include common dev ports for Vite (5173) and CRA (3000)
-const rawOrigins = process.env.CORS_ALLOWED_ORIGINS ?? "";
-const FALLBACK_ORIGINS = ["http://localhost:5173", "http://localhost:3000"];
-const ALLOWED_ORIGINS =
-  rawOrigins.trim() !== ""
-    ? rawOrigins.split(",").map((s) => s.trim())
-    : FALLBACK_ORIGINS;
-
 const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(__dirname, "uploads");
-const CLIENT_BUILD_DIR = process.env.CLIENT_BUILD_DIR || path.join(__dirname, "..", "frontend", "dist");
+const CLIENT_BUILD_DIR =
+  process.env.CLIENT_BUILD_DIR || path.join(__dirname, "..", "frontend", "dist");
+
+/* -------------------------------------------------------------------------- */
+/* ✅ Allowed origins resolver (FRONTEND_URL | CORS_ALLOWED_ORIGINS | fallback) */
+/* -------------------------------------------------------------------------- */
+// Fallback dev origins (Vite/CRA)
+const FALLBACK_ORIGINS = ["http://localhost:5173", "http://localhost:3000"];
+
+// Priority:
+// 1. FRONTEND_URL (single origin) - recommended for production
+// 2. CORS_ALLOWED_ORIGINS (comma-separated list)
+// 3. FALLBACK_ORIGINS (development)
+const envFrontend = (process.env.FRONTEND_URL || "").trim();
+const rawOrigins = (process.env.CORS_ALLOWED_ORIGINS || "").trim();
+
+let ALLOWED_ORIGINS = [];
+
+if (envFrontend) {
+  ALLOWED_ORIGINS = [envFrontend];
+} else if (rawOrigins) {
+  ALLOWED_ORIGINS = rawOrigins
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+} else {
+  ALLOWED_ORIGINS = FALLBACK_ORIGINS;
+}
 
 /* -------------------------------------------------------------------------- */
 /* 📦 ROUTES (import your route modules as before) */
@@ -141,8 +159,6 @@ app.set("io", io);
 io.on("connection", (socket) => {
   logger.info(`🟢 Socket connected → ${socket.id}`);
 
-  // Backwards-compatible: allow token-based or query userId
-  // (application-level authentication should validate on server side)
   const userId = socket.handshake.query?.userId;
   if (userId) socket.join(`user_${userId}`);
 
@@ -169,37 +185,36 @@ io.on("error", (err) => logger.error("Socket.IO error:", err));
  * - You can tighten this later for production (remove data: or restrict https: domains)
  */
 
+// Build CSP arrays that Helmet expects. Make sure values are strings and unique.
 const frameSrcOrigins = Array.from(
   new Set(["'self'", "https://www.google.com", "https://maps.google.com", "https://maps.gstatic.com", ...ALLOWED_ORIGINS])
 );
 
-const imgSrc = ["'self'", "data:", "blob:", "https:", ...ALLOWED_ORIGINS];
-const scriptSrc = ["'self'", "'unsafe-inline'", "https:", ...ALLOWED_ORIGINS];
-const styleSrc = ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https:", ...ALLOWED_ORIGINS];
-const fontSrc = ["'self'", "https://fonts.gstatic.com", "data:", "https:", ...ALLOWED_ORIGINS];
-const connectSrc = ["'self'", "https:", ...ALLOWED_ORIGINS];
+const imgSrc = Array.from(new Set(["'self'", "data:", "blob:", "https:", ...ALLOWED_ORIGINS]));
+const scriptSrc = Array.from(new Set(["'self'", "'unsafe-inline'", "https:", ...ALLOWED_ORIGINS]));
+const styleSrc = Array.from(
+  new Set(["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https:", ...ALLOWED_ORIGINS])
+);
+const fontSrc = Array.from(new Set(["'self'", "https://fonts.gstatic.com", "data:", "https:", ...ALLOWED_ORIGINS]));
+const connectSrc = Array.from(new Set(["'self'", "https:", ...ALLOWED_ORIGINS]));
 
-// ≫ replace your existing helmet(...) config with this block
+// Helmet with CSP directives using the arrays above
 app.use(
   helmet({
     contentSecurityPolicy: {
       useDefaults: true,
       directives: {
         ...helmet.contentSecurityPolicy.getDefaultDirectives(),
-
-        // allow frames (google maps), images (data:), styles, scripts, fonts (data:)
-        "frame-src": ["'self'", "https://www.google.com", "https://maps.google.com", "https://maps.gstatic.com", ...ALLOWED_ORIGINS],
-        "img-src": ["'self'", "data:", "blob:", "https:", ...ALLOWED_ORIGINS],
-        "script-src": ["'self'", "'unsafe-inline'", "https:", ...ALLOWED_ORIGINS],
-        "style-src": ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https:", ...ALLOWED_ORIGINS],
-        // ← IMPORTANT: allow data: for base64 fonts used in dev
-        "font-src": ["'self'", "https://fonts.gstatic.com", "data:", "https:", ...ALLOWED_ORIGINS],
-        "connect-src": ["'self'", "https:", ...ALLOWED_ORIGINS],
+        "frame-src": frameSrcOrigins,
+        "img-src": imgSrc,
+        "script-src": scriptSrc,
+        "style-src": styleSrc,
+        "font-src": fontSrc,
+        "connect-src": connectSrc,
       },
     },
   })
 );
-
 
 // Response compression, cookie parsing, request logging
 app.use(compression());
@@ -214,12 +229,16 @@ app.use(express.urlencoded({ extended: true, limit: "25mb" }));
 app.use(mongoSanitize());
 app.use(xss());
 
-// CORS: allow configured origins (and allow undefined origin for non-browser tools)
+// CORS middleware: allow configured origins (and allow undefined origin for non-browser tools)
 app.use(
   cors({
     origin: (origin, cb) => {
+      // allow curl/Postman (no origin) and server-to-server requests
       if (!origin) return cb(null, true);
+
+      // Exact match against allowed origins
       if (ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
+
       logger.warn(`CORS blocked: ${origin}`);
       return cb(new Error(`CORS blocked: ${origin}`));
     },
