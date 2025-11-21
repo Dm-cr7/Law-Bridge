@@ -67,6 +67,7 @@ const FALLBACK_ORIGINS = ["http://localhost:5173", "http://localhost:3000"];
 // 3. FALLBACK_ORIGINS (development)
 const envFrontend = (process.env.FRONTEND_URL || "").trim();
 const rawOrigins = (process.env.CORS_ALLOWED_ORIGINS || "").trim();
+const BACKEND_PUBLIC_URL = (process.env.BACKEND_PUBLIC_URL || "").trim();
 
 let ALLOWED_ORIGINS = [];
 
@@ -143,11 +144,13 @@ app.set("etag", false);
 
 const server = http.createServer(app);
 
-// Socket.IO - use polling first then websocket (works better behind proxies)
-// and export path explicitly to avoid client/server path mismatch
+// Compose extra origins for CSP (include backend public URL when provided)
+const extraOrigins = Array.from(new Set([...ALLOWED_ORIGINS, ...(BACKEND_PUBLIC_URL ? [BACKEND_PUBLIC_URL] : [])]));
+
+// Socket.IO - use polling first then websocket
 const io = new SocketServer(server, {
   path: "/socket.io",
-  cors: { origin: ALLOWED_ORIGINS, credentials: true },
+  cors: { origin: extraOrigins, credentials: true },
   transports: ["polling", "websocket"],
 });
 
@@ -187,16 +190,16 @@ io.on("error", (err) => logger.error("Socket.IO error:", err));
 
 // Build CSP arrays that Helmet expects. Make sure values are strings and unique.
 const frameSrcOrigins = Array.from(
-  new Set(["'self'", "https://www.google.com", "https://maps.google.com", "https://maps.gstatic.com", ...ALLOWED_ORIGINS])
+  new Set(["'self'", "https://www.google.com", "https://maps.google.com", "https://maps.gstatic.com", ...extraOrigins])
 );
 
-const imgSrc = Array.from(new Set(["'self'", "data:", "blob:", "https:", ...ALLOWED_ORIGINS]));
-const scriptSrc = Array.from(new Set(["'self'", "'unsafe-inline'", "https:", ...ALLOWED_ORIGINS]));
+const imgSrc = Array.from(new Set(["'self'", "data:", "blob:", "https:", ...extraOrigins]));
+const scriptSrc = Array.from(new Set(["'self'", "'unsafe-inline'", "https:", ...extraOrigins]));
 const styleSrc = Array.from(
-  new Set(["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https:", ...ALLOWED_ORIGINS])
+  new Set(["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https:", ...extraOrigins])
 );
-const fontSrc = Array.from(new Set(["'self'", "https://fonts.gstatic.com", "data:", "https:", ...ALLOWED_ORIGINS]));
-const connectSrc = Array.from(new Set(["'self'", "https:", ...ALLOWED_ORIGINS]));
+const fontSrc = Array.from(new Set(["'self'", "https://fonts.gstatic.com", "data:", "https:", ...extraOrigins]));
+const connectSrc = Array.from(new Set(["'self'", "https:", "wss:", ...extraOrigins]));
 
 // Helmet with CSP directives using the arrays above
 app.use(
@@ -233,12 +236,8 @@ app.use(xss());
 app.use(
   cors({
     origin: (origin, cb) => {
-      // allow curl/Postman (no origin) and server-to-server requests
-      if (!origin) return cb(null, true);
-
-      // Exact match against allowed origins
-      if (ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
-
+      if (!origin) return cb(null, true); // allow non-browser tools (curl, Postman)
+      if (ALLOWED_ORIGINS.includes(origin) || extraOrigins.includes(origin)) return cb(null, true);
       logger.warn(`CORS blocked: ${origin}`);
       return cb(new Error(`CORS blocked: ${origin}`));
     },
